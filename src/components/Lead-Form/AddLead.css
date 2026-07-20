@@ -1,0 +1,258 @@
+/* ===============================================
+   ADD LEAD PAGE - Final Compact Version
+   Form Scrollable | Preview Fixed on Screen
+   =============================================== */
+
+.add-lead-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 28px;
+}
+
+.add-lead-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.add-lead-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1c0d03;
+  margin: 0;
+}
+
+.add-lead-subtitle {
+  color: #b07850;
+  margin: 4px 0 0 0;
+  font-size: 14.5px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* Buttons */
+.btn-cancel, .btn-save {
+  padding: 9px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  border: 1.5px solid #d1b8a0;
+  background: white;
+  color: #6b5b4a;
+}
+
+.btn-cancel:hover {
+  background: #f8f4ee;
+}
+
+.btn-save {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  color: white;
+  border: none;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+}
+
+.btn-save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.4);
+}
+
+/* ===================== MAIN LAYOUT ===================== */
+.add-lead-content {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 28px;
+  height: calc(100vh - 180px);   /* Adjust based on your navbar height */
+  min-height: 650px;
+}
+
+/* LEFT - Scrollable Form */
+.add-lead-form {
+  background: white;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
+  border: 1px solid #b8a892;
+  overflow-y: auto;           /* Makes form scrollable */
+  height: 100%;               /* Takes full available height */
+}
+
+.add-lead-form::-webkit-scrollbar {
+  width: 6px;
+}
+.add-lead-form::-webkit-scrollbar-thumb {
+  background: #d4b78f;
+  border-radius: 10px;
+}
+
+/* RIGHT - Fixed Preview */
+.add-lead-preview {
+  position: sticky;
+  top: 90px;                    /* Change according to your NavBar height */
+  height: fit-content;
+}
+
+.preview-card {
+  background: white;
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.07);
+  border: 1px solid #b8a892;
+}
+
+/* ==================== FORM STYLES ==================== */
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.form-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.form-section.full-width {
+  grid-column: 1 / -1;
+}
+
+.section-title {
+  grid-column: 1 / -1;
+  font-size: 16.5px;
+  font-weight: 700;
+  color: #1c0d03;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0e6d9;
+}
+
+.fg {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fg label {
+  font-weight: 600;
+  color: #4a3728;
+  font-size: 13.5px;
+}
+
+.required { color: #ef4444; }
+
+.fg input,
+.fg select,
+.fg textarea {
+  padding: 9px 14px;
+  border: 1.5px solid #e8d9c0;
+  border-radius: 8px;
+  font-size: 14.5px;
+  background: #fffaf0;
+  transition: all 0.2s;
+}
+
+.fg textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.fg input:focus,
+.fg select:focus,
+.fg textarea:focus {
+  border-color: #f97316;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+/* Error */
+.error { border-color: #ef4444 !important; background: #fff5f5 !important; }
+.error-msg {
+  color: #ef4444;
+  font-size: 12.5px;
+}
+
+/* Status & Priority */
+.status-options { display: flex; gap: 8px; flex-wrap: wrap; }
+.status-chip {
+  padding: 2px 18px;
+  border: 1.5px solid #e8d9c0;
+  background: white;
+  border-radius: 9999px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.prio-row { display: flex; gap: 8px; }
+.prio-btn {
+  flex: 1;
+  padding: 0px 18px;
+  border: 2px solid #e8d9c0;
+  background: white;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Preview Styles */
+
+.preview-title {
+  font-size: 19.5px;
+  font-weight: 700;
+  color: #1c0d03;
+}
+
+.preview-name {
+  /* font-size: 19.5px; */
+  font-weight: 700;
+  color: #1c0d03;
+}
+
+
+
+.preview-company {
+  color: #b07850;
+  font-size: 14px;
+  margin: 6px 0 16px 0;
+}
+
+.preview-meta { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.preview-pill {
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.preview-info p {
+  margin: 6px 0;
+  font-size: 14px;
+  color: #5c4637;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .add-lead-content {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .add-lead-form {
+    height: auto;
+    overflow-y: visible;
+  }
+  .add-lead-preview {
+    position: static;
+  }
+}

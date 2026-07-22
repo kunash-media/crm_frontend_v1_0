@@ -48,9 +48,10 @@
 /* ── App Shell ─────────────────────────────────────────────── */
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--bg-page);
   font-family: var(--ff-body);
+  overflow: hidden;
 }
 
 .app-main {
@@ -58,6 +59,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;   /* prevent flex blowout */
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -80,11 +82,28 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--bd-soft);
-  overflow: hidden;
-  transition: width .28s var(--ease-out);
+ overflow: hidden;
+  transition: width .18s cubic-bezier(.4,0,.2,1);
+  will-change: width;
   z-index: 300;
   flex-shrink: 0;
   border-right: 1px solid #f49c79d2;
+}
+
+/* ADD after .aside-nav-label rule */
+.aside-nav-label,
+.aside-brand-text,
+.aside-toggle-label {
+  transition: opacity .12s ease, max-width .18s cubic-bezier(.4,0,.2,1);
+  opacity: 1;
+  max-width: 160px;
+}
+
+.aside-collapsed .aside-nav-label,
+.aside-collapsed .aside-brand-text,
+.aside-collapsed .aside-toggle-label {
+  opacity: 0;
+  max-width: 0;
 }
 
 .aside-expanded { width: var(--aside-w-exp); }

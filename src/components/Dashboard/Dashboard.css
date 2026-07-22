@@ -153,7 +153,7 @@ input, select, textarea { font-family: var(--ff-body); }
   background: linear-gradient(155deg, rgba(255,255,255,0.85) 0%, rgba(255,244,230,0.55) 100%);
   backdrop-filter: blur(24px);
   border: 1px solid var(--bd-strong);
-  border-radius: var(--r-xl);
+  border-radius: 10px;
   box-shadow: var(--sh-sm);
   padding: 15px 16px;
   overflow: hidden;
@@ -182,6 +182,7 @@ input, select, textarea { font-family: var(--ff-body); }
   flex-shrink: 0;
   background-image: linear-gradient(145deg, rgba(255,255,255,0.5), rgba(255,255,255,0) 60%);
   box-shadow: inset 0 1px 1px rgba(255,255,255,0.6), 0 3px 8px rgba(154,52,18,0.14);
+  border: 1px solid rgba(134, 131, 131, 0.578);
 }
 .stat-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .stat-value {
@@ -209,7 +210,7 @@ input, select, textarea { font-family: var(--ff-body); }
   background: var(--bg-glass);
   backdrop-filter: blur(24px);
   border: 1px solid var(--bd-strong);
-  border-radius: var(--r-xl);
+  border-radius: 8px;
   box-shadow: var(--sh-md);
   padding: 18px 20px;
 }
@@ -248,7 +249,7 @@ input, select, textarea { font-family: var(--ff-body); }
   grid-template-columns: 248px 1fr;
   background: var(--bg-glass);
   backdrop-filter: blur(24px);
-  border-radius: var(--r-xl);
+  border-radius: 8px;
   border: 1px solid var(--bd-strong);
   box-shadow: var(--sh-md);
   overflow: hidden;
@@ -526,7 +527,7 @@ input, select, textarea { font-family: var(--ff-body); }
 .tbl-section {
   background: var(--bg-glass);
   backdrop-filter: blur(24px);
-  border-radius: var(--r-xl);
+  border-radius: 8px;
   border: 1px solid var(--bd-strong);
   box-shadow: var(--sh-md);
   padding: 22px 24px;
@@ -613,7 +614,7 @@ input, select, textarea { font-family: var(--ff-body); }
   border-radius: var(--r-md);
   border: 1px solid #f49c79d2;
 }
-.tbl-scroll::-webkit-scrollbar { height: 4px; }
+/* .tbl-scroll::-webkit-scrollbar { height: 4px; } */
 .tbl-scroll::-webkit-scrollbar-thumb { background:var(--o200); border-radius:4px; }
 
 .lead-tbl {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell, ResponsiveContainer, Legend,
@@ -30,11 +30,37 @@ const STATUS_CFG = {
 
 
 const WORK_TYPE_CFG = {
-  static:   { label:"Static Website",  color:"#ea580c" },
-  dynamic:  { label:"Dynamic Website", color:"#fb923c" },
-  meta_ads: { label:"Meta Ads",        color:"#f59e0b" },
-  campaign: { label:"Campaign Running",color:"#fdba74" },
+  static:   { label:"Static Website"   },
+  dynamic:  { label:"Dynamic Website"  },
+  meta_ads: { label:"Meta Ads"         },
+  campaign: { label:"Campaign Running" },
 };
+
+// new_str
+/* Deterministic hash → dark HSL color. Same key ALWAYS produces the same
+   color — no DB, no localStorage, no cache to manage. Stable across every
+   render, refresh, and session automatically. New keys just work. */
+const colorForKey = (key) => {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = key.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue   = Math.abs(hash) % 360;
+  const sat   = 55 + (Math.abs(hash >> 8) % 20);   // 55–75%
+  const light = 24 + (Math.abs(hash >> 4) % 14);   // 24–38% (dark range)
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+};
+
+/* Module-level cache: once a category key gets a color, it keeps that
+   exact color for the rest of the session — new keys get a fresh random
+   dark color, existing keys never change. Not persisted to localStorage
+   on purpose (per current no-persistence requirement); resets only on
+   a full page reload, same as DUMMY_LEADS itself. */
+const categoryColorCache = {};
+
+const colorForIndex = (i) => CHART_PALETTE[i % CHART_PALETTE.length];
+
+
 const BADGE_GRADIENTS = [
   "linear-gradient(135deg,#f97316,#ea580c)",
   "linear-gradient(135deg,#a855f7,#7c3aed)",
@@ -106,15 +132,7 @@ const DUMMY_LEADS = [
     badgeGrad: BADGE_GRADIENTS[5],
     workType:"static", emailSent:false, outcome:"lost",
   },
-  {
-    id:"d7", name:"Karthik Iyer", email:"karthik@autoserv.io",
-    phone:"+91 77889 11223", company:"AutoServ Logistics",
-    status:"hot", priority:"P2", notes:"Pilot running. Escalate to decision-maker next call.",
-    followUpDate: rel(0),   /* TODAY also — shows multi-lead on same day */
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-1).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[0],
-    workType:"campaign", emailSent:true, outcome:"won",
-  },
+ 
 
    {
     id:"d2", name:"Priya Sharma", email:"priya@finedge.com",
@@ -152,15 +170,7 @@ const DUMMY_LEADS = [
     badgeGrad: BADGE_GRADIENTS[4],
     workType:"meta_ads", emailSent:true, outcome:null,
   },
-  {
-    id:"d6", name:"Ananya Joshi", email:"ananya@healthplus.in",
-    phone:"+91 91234 56789", company:"HealthPlus Clinics",
-    status:"cold", priority:"P3", notes:"Interested in 6-month pilot. Budget approval pending.",
-    followUpDate: rel(-3),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-15).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[5],
-    workType:"static", emailSent:false, outcome:"lost",
-  },
+  
   {
     id:"d7", name:"Karthik Iyer", email:"karthik@autoserv.io",
     phone:"+91 77889 11223", company:"AutoServ Logistics",
@@ -239,18 +249,7 @@ const DUMMY_LEADS = [
 /* ─────────────────────────────────────────────────────────────
    STORAGE
 ───────────────────────────────────────────────────────────── */
-const STORAGE_KEY = "crm_leads_v3";
-const loadLeads = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  // first-run: seed dummy data
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DUMMY_LEADS));
-  return DUMMY_LEADS;
-};
-const persist = (leads) => localStorage.setItem(STORAGE_KEY, JSON.stringify(leads));
-
+const loadLeads = () => DUMMY_LEADS;
 const EMPTY_FORM = {
   name:"", email:"", phone:"", company:"",
   status:"warm", priority:"P2", notes:"", followUpDate:"",
@@ -310,10 +309,11 @@ const TrendBarChart = ({ data }) => (
 
 /* ── Lead Source Doughnut Chart (Recharts) ── */
 const DoughnutChart = ({ counts }) => {
-  const data = Object.entries(counts)
-    .filter(([, v]) => v > 0)
-    .map(([key, value]) => ({ key, name: WORK_TYPE_CFG[key].label, value, color: WORK_TYPE_CFG[key].color }));
-
+  const data = useMemo(() =>
+    Object.entries(counts)
+      .filter(([, v]) => v > 0)
+      .map(([key, value]) => ({ key, name: WORK_TYPE_CFG[key].label, value, color: colorForKey(key) })),
+  [counts]);
   if (data.length === 0) return <p className="up-empty">No source data yet</p>;
 
   return (
@@ -605,7 +605,6 @@ const Dashboard = () => {
   const [stFilter,  setStFilter]  = useState("all");
   const [selected,  setSelected]  = useState([]);
 
-  useEffect(() => persist(leads), [leads]);
 
   /* date → leads map */
   const leadsByDate = useMemo(() => {

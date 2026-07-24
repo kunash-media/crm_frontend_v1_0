@@ -5,6 +5,8 @@ import NavBar   from "./components/Asidebar-Navbar/NavBar.jsx";
 import Dashboard from "./components/Dashboard/Dashboard.jsx";
 import AddLead from "./components/Lead-Form/AddLead.jsx";
 import Invoice from "./components/Invoice/Invoice.jsx";
+import ClientList from "./components/Client-List/ClientList.jsx";
+import WFormatter from "./components/W-Formatter/WFormatter.jsx";
 
 
 /* ─────────────────────────────────────────────────────────────
@@ -62,7 +64,7 @@ function App() {
       } />
 
       <Route path="/clients" element={
-        <AppLayout><ComingSoon title="Client List" /></AppLayout>
+        <AppLayout><ClientList /></AppLayout>
       } />
 
       <Route path="/invoices" element={
@@ -75,6 +77,10 @@ function App() {
 
       <Route path="/settings" element={
         <AppLayout><ComingSoon title="Settings" /></AppLayout>
+      } />
+
+       <Route path="/w-formatter" element={
+        <AppLayout><WFormatter title="W-formatter" /></AppLayout>
       } />
 
       {/* 404 fallback */}

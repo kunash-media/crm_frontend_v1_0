@@ -1,3 +1,4 @@
+import "../Dashboard/Dashboard.css";
 import { useState, useRef, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -6,7 +7,6 @@ import {
 import {
   Users, CalendarClock, Mail, Repeat, CheckCircle2, XCircle,
 } from "lucide-react";
-import "../Dashboard/Dashboard.css"
 
 /* ─────────────────────────────────────────────────────────────
    CONSTANTS & HELPERS
@@ -266,8 +266,8 @@ const StatCard = ({ label, value, Icon, accent }) => (
       <Icon size={19} strokeWidth={2.1} />
     </div>
     <div className="stat-info">
-      <span className="stat-value">{value}</span>
       <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
     </div>
   </div>
 );
@@ -288,62 +288,7 @@ const ChartTooltip = ({ active, payload, label }) => {
   );
 };
 
-/* ── Monthly Trend Bar Chart (Recharts) ── */
-const TrendBarChart = ({ data }) => (
-  <ResponsiveContainer width="100%" height={220}>
-    <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-      <defs>
-        <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fb923c" />
-          <stop offset="100%" stopColor="#ea580c" />
-        </linearGradient>
-      </defs>
-      <CartesianGrid vertical={false} stroke="rgba(234,88,12,0.12)" />
-      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#b07850", fontWeight: 600 }} axisLine={false} tickLine={false} />
-      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#b07850" }} axisLine={false} tickLine={false} width={26} />
-      <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(249,115,22,0.06)" }} />
-      <Bar dataKey="count" name="Leads" fill="url(#barGrad)" radius={[5, 5, 0, 0]} maxBarSize={34} />
-    </BarChart>
-  </ResponsiveContainer>
-);
 
-/* ── Lead Source Doughnut Chart (Recharts) ── */
-const DoughnutChart = ({ counts }) => {
-  const data = useMemo(() =>
-    Object.entries(counts)
-      .filter(([, v]) => v > 0)
-      .map(([key, value]) => ({ key, name: WORK_TYPE_CFG[key].label, value, color: colorForKey(key) })),
-  [counts]);
-  if (data.length === 0) return <p className="up-empty">No source data yet</p>;
-
-  return (
-    <ResponsiveContainer width="100%" height={220}>
-      <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          innerRadius={52}
-          outerRadius={78}
-          paddingAngle={3}
-          cornerRadius={4}
-          stroke="none"
-        >
-          {data.map((d) => <Cell key={d.key} fill={d.color} />)}
-        </Pie>
-        <Tooltip content={<ChartTooltip />} />
-        <Legend
-          layout="vertical"
-          verticalAlign="middle"
-          align="right"
-          iconType="circle"
-          iconSize={8}
-          wrapperStyle={{ fontSize: 12, color: "#7c4520", fontWeight: 500 }}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  );
-};
 
 /* ── Mini Calendar Grid ── */
 const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
@@ -422,6 +367,63 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
         })}
       </div>
     </div>
+  );
+};
+
+/* ── Monthly Trend Bar Chart (Recharts) ── */
+const TrendBarChart = ({ data }) => (
+  <ResponsiveContainer width="100%" height={220}>
+    <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+      <defs>
+        <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fb923c" />
+          <stop offset="100%" stopColor="#ea580c" />
+        </linearGradient>
+      </defs>
+      <CartesianGrid vertical={false} stroke="rgba(234,88,12,0.12)" />
+      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#b07850", fontWeight: 600 }} axisLine={false} tickLine={false} />
+      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#b07850" }} axisLine={false} tickLine={false} width={26} />
+      <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(249,115,22,0.06)" }} />
+      <Bar dataKey="count" name="Leads" fill="url(#barGrad)" radius={[5, 5, 0, 0]} maxBarSize={34} />
+    </BarChart>
+  </ResponsiveContainer>
+);
+
+/* ── Lead Source Doughnut Chart (Recharts) ── */
+const DoughnutChart = ({ counts }) => {
+  const data = useMemo(() =>
+    Object.entries(counts)
+      .filter(([, v]) => v > 0)
+      .map(([key, value]) => ({ key, name: WORK_TYPE_CFG[key].label, value, color: colorForKey(key) })),
+  [counts]);
+  if (data.length === 0) return <p className="up-empty">No source data yet</p>;
+
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <PieChart>
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="name"
+          innerRadius={52}
+          outerRadius={78}
+          paddingAngle={3}
+          cornerRadius={4}
+          stroke="none"
+        >
+          {data.map((d) => <Cell key={d.key} fill={d.color} />)}
+        </Pie>
+        <Tooltip content={<ChartTooltip />} />
+        <Legend
+          layout="vertical"
+          verticalAlign="middle"
+          align="right"
+          iconType="circle"
+          iconSize={8}
+          wrapperStyle={{ fontSize: 12, color: "#7c4520", fontWeight: 500 }}
+        />
+      </PieChart>
+    </ResponsiveContainer>
   );
 };
 
@@ -749,26 +751,13 @@ const Dashboard = () => {
         <section className="stats-row">
           <StatCard label="Total Leads"       value={stats.total}          Icon={Users}         accent={{ bg:"rgba(249,115,22,.13)", color:"#ea580c" }} />
           <StatCard label="Today Follow-ups"  value={stats.todayFollowups} Icon={CalendarClock} accent={{ bg:"rgba(239,68,68,.13)",  color:"#ef4444" }} />
-          <StatCard label="Emails Sent"       value={stats.emailSent}      Icon={Mail}          accent={{ bg:"rgba(59,130,246,.13)", color:"#3b82f6" }} />
+          <StatCard label="WhatsApp"       value={stats.emailSent}      Icon={Mail}          accent={{ bg:"rgba(59,130,246,.13)", color:"#3b82f6" }} />
           <StatCard label="Total Follow-ups"  value={stats.totalFollowups} Icon={Repeat}        accent={{ bg:"rgba(245,158,11,.13)", color:"#f59e0b" }} />
           <StatCard label="Won"      value={stats.won}            Icon={CheckCircle2}  accent={{ bg:"rgba(34,197,94,.13)",  color:"#16a34a" }} />
           <StatCard label="Lost Leads"        value={stats.lost}           Icon={XCircle}       accent={{ bg:"rgba(107,114,128,.13)",color:"#6b7280" }} />
         </section>
 
-        {/* ════════════════════════════════════════
-            CHARTS
-        ════════════════════════════════════════ */}
-        <section className="charts-row">
-          <div className="chart-card">
-            <p className="chart-title">Monthly Lead Trend</p>
-            <TrendBarChart data={monthlyTrend} />
-          </div>
-           <div className="chart-card">
-            <p className="chart-title">Working Category Distribution</p>
-            <DoughnutChart counts={workTypeDist} />
-          </div>
-        </section>
-
+      
         {/* ════════════════════════════════════════
             CALENDAR SECTION
         ════════════════════════════════════════ */}
@@ -834,6 +823,21 @@ const Dashboard = () => {
             />
           </div>
         </section>
+
+          {/* ════════════════════════════════════════
+            CHARTS
+        ════════════════════════════════════════ */}
+        <section className="charts-row">
+          <div className="chart-card">
+            <p className="chart-title">Monthly Lead Trend</p>
+            <TrendBarChart data={monthlyTrend} />
+          </div>
+           <div className="chart-card">
+            <p className="chart-title">Working Category Distribution</p>
+            <DoughnutChart counts={workTypeDist} />
+          </div>
+        </section>
+
 
         {/* ════════════════════════════════════════
             LEAD TABLE SECTION

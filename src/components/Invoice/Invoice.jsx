@@ -431,19 +431,19 @@ const Invoice = () => {
             <div className="inv-grid-2">
               <div className="inv-fg">
                 <label>Client Name *</label>
-                <input className="inv-input" placeholder="Vijay Artezo"
+                <input className="inv-input" placeholder="Enter Name"
                   value={invoice.billTo.name}
                   onChange={(e) => setBillTo("name", e.target.value)} />
               </div>
               <div className="inv-fg">
                 <label>Company Name</label>
-                <input className="inv-input" placeholder="Artezo Studio"
+                <input className="inv-input" placeholder="Enter Company"
                   value={invoice.billTo.company}
                   onChange={(e) => setBillTo("company", e.target.value)} />
               </div>
               <div className="inv-fg">
                 <label>Email *</label>
-                <input type="email" className="inv-input" placeholder="vijay@artezo.com"
+                <input type="email" className="inv-input" placeholder="Enter Email"
                   value={invoice.billTo.email}
                   onChange={(e) => setBillTo("email", e.target.value)} />
               </div>

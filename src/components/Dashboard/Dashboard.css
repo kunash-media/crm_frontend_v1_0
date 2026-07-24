@@ -137,12 +137,13 @@ input, select, textarea { font-family: var(--ff-body); }
 /* new_str */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   width: 100%;
   box-sizing: border-box;
   align-items: stretch;
 }
+
 .stat-card {
   position: relative;
   display: flex;
@@ -153,12 +154,14 @@ input, select, textarea { font-family: var(--ff-body); }
   background: linear-gradient(155deg, rgba(255,255,255,0.85) 0%, rgba(255,244,230,0.55) 100%);
   backdrop-filter: blur(24px);
   border: 1px solid var(--bd-strong);
-  border-radius: 10px;
+  border-radius: 4px;
   box-shadow: var(--sh-sm);
   padding: 15px 16px;
   overflow: hidden;
   transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
+
+
 /* diagonal shine sweep on hover */
 .stat-card::before {
   content: "";

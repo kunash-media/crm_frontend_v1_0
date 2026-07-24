@@ -79,8 +79,7 @@ const ProfilePanel = ({ onClose }) => {
       <ul className="profile-menu">
         {[
           { icon: "👤", label: "My Profile"   },
-          { icon: "⚙️", label: "Settings",  action: () => navigate("/settings") },
-          { icon: "🔒", label: "Security"      },
+         
         ].map((item) => (
           <li key={item.label}>
             <button className="profile-menu-item" onClick={item.action || onClose}>

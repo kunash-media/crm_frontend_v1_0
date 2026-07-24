@@ -1,0 +1,29 @@
+.tpl-btn {
+  color: #64748b;
+  background: transparent;
+}
+
+.tpl-btn:hover:not(.active-tpl) {
+  background: rgba(255, 255, 255, 0.5);
+  color: #334155;
+}
+
+.tpl-btn.active-tpl {
+  background: #ffffff;
+  color: #059669;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #a7f3d0;
+}
+
+#previewText,
+.formatter-root pre {
+  min-height: 60px;
+}
+
+.formatter-root ::-webkit-scrollbar {
+  width: 8px;
+}
+.formatter-root ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+}

@@ -16,7 +16,7 @@ const PRIORITY_CFG = {
   P3: { color: "#3b82f6", label: "Low" },
 };
 
-const LEAD_SOURCES = ["Website", "Referral", "Cold Call", "LinkedIn", "Event", "Inbound Email", "Other"];
+const LEAD_SOURCES = ["Website", "Referral", "Cold Call", "LinkedIn", "Event", "WhatsApp", "Inbound Email", "Other"];
 
 const EMPTY_LEAD = {
   name: "",

@@ -18,8 +18,28 @@ const PRIORITY_CFG = {
 
 const LEAD_SOURCES = ["Website", "Referral", "Cold Call", "LinkedIn", "Event", "WhatsApp", "Inbound Email", "Other"];
 
+const REQUIREMENT_CATEGORIES = [
+  "Website Design",
+  "Ecommerce Website",
+  "Dynamic Website",
+  "Landing Page",
+  "Google Ads",
+  "Meta Ads",
+  "LinkedIn Marketing",
+  "SEO",
+  "Social Media Marketing",
+  "Graphic Design",
+  "Software Development",
+  "Mobile App",
+  "HRMS",
+  "CRM",
+  "Custom Development",
+  "Other",
+];
+
 const EMPTY_LEAD = {
-  name: "",
+  firstName: "",
+  lastName: "",
   email: "",
   phone: "",
   company: "",
@@ -28,7 +48,7 @@ const EMPTY_LEAD = {
   followUpDate: "",
   notes: "",
   source: "Website",
-  dealValue: "",
+  requirementCategory: REQUIREMENT_CATEGORIES[0],
   tags: "",
 };
 
@@ -37,6 +57,7 @@ const AddLead = () => {
   const [form, setForm] = useState(EMPTY_LEAD);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [phoneCheck, setPhoneCheck] = useState({ checking: false, exists: false, checkedFor: "" });
 
   // Auto-set follow-up date to tomorrow by default
   useEffect(() => {
@@ -50,13 +71,30 @@ const AddLead = () => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: "" }));
+    if (name === "phone" && phoneCheck.checkedFor && value !== phoneCheck.checkedFor) {
+      setPhoneCheck({ checking: false, exists: false, checkedFor: "" });
+    }
+  };
+
+  // TODO: replace this localStorage lookup with your real duplicate-check API call
+  const checkPhoneExists = async (phone) => {
+    if (!phone.trim() || phone.trim().length < 10) return;
+    setPhoneCheck(prev => ({ ...prev, checking: true }));
+    const existing = JSON.parse(localStorage.getItem("crm_leads_v2") || "[]");
+    const found = existing.some(l => (l.phone || "").replace(/\D/g, "") === phone.replace(/\D/g, ""));
+    setPhoneCheck({ checking: false, exists: found, checkedFor: phone });
+    if (found) {
+      setErrors(prev => ({ ...prev, phone: "This phone number already exists" }));
+    }
   };
 
   const validate = () => {
     const err = {};
-    if (!form.name.trim()) err.name = "Full name is required";
+    if (!form.firstName.trim()) err.firstName = "First name is required";
+    if (!form.lastName.trim()) err.lastName = "Last name is required";
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) err.email = "Valid email is required";
     if (!form.phone.trim()) err.phone = "Phone number is required";
+    if (phoneCheck.exists && phoneCheck.checkedFor === form.phone) err.phone = "This phone number already exists";
     if (!form.followUpDate) err.followUpDate = "Follow-up date is required";
 
     setErrors(err);
@@ -67,12 +105,12 @@ const AddLead = () => {
     if (!validate()) return;
 
     setIsSaving(true);
-    
+
     // Simulate API call
     setTimeout(() => {
       // Get existing leads and add new one
       const existing = JSON.parse(localStorage.getItem("crm_leads_v2") || "[]");
-      
+
       const newLead = {
         ...form,
         id: `lead_${Date.now()}`,
@@ -81,7 +119,7 @@ const AddLead = () => {
       };
 
       localStorage.setItem("crm_leads_v2", JSON.stringify([newLead, ...existing]));
-      
+
       alert("✅ Lead created successfully!");
       navigate("/dashboard");
     }, 800);
@@ -94,13 +132,13 @@ const AddLead = () => {
           <h1 className="add-lead-title">Add New Lead</h1>
           <p className="add-lead-subtitle">Capture a new business opportunity</p>
         </div>
-        
+
         <div className="header-actions">
           <button className="btn-cancel" onClick={() => navigate("/dashboard")}>
             Cancel
           </button>
-          <button 
-            className="btn-save" 
+          <button
+            className="btn-save"
             onClick={handleSave}
             disabled={isSaving}
           >
@@ -117,18 +155,31 @@ const AddLead = () => {
             {/* Basic Info */}
             <div className="form-section">
               <h3 className="section-title">Basic Information</h3>
-              
+
               <div className="fg">
-                <label>Full Name <span className="required">*</span></label>
+                <label>First Name <span className="required">*</span></label>
                 <input
                   type="text"
-                  name="name"
-                  value={form.name}
+                  name="firstName"
+                  value={form.firstName}
                   onChange={handleChange}
-                  placeholder="Arjun Mehta"
-                  className={errors.name ? "error" : ""}
+                  placeholder="Arjun"
+                  className={errors.firstName ? "error" : ""}
                 />
-                {errors.name && <span className="error-msg">{errors.name}</span>}
+                {errors.firstName && <span className="error-msg">{errors.firstName}</span>}
+              </div>
+
+              <div className="fg">
+                <label>Last Name <span className="required">*</span></label>
+                <input
+                  type="text"
+                  name="lastName"
+                  value={form.lastName}
+                  onChange={handleChange}
+                  placeholder="Mehta"
+                  className={errors.lastName ? "error" : ""}
+                />
+                {errors.lastName && <span className="error-msg">{errors.lastName}</span>}
               </div>
 
               <div className="fg">
@@ -151,9 +202,11 @@ const AddLead = () => {
                   name="phone"
                   value={form.phone}
                   onChange={handleChange}
+                  onBlur={(e) => checkPhoneExists(e.target.value)}
                   placeholder="+91 98201 33410"
                   className={errors.phone ? "error" : ""}
                 />
+                {phoneCheck.checking && <span className="hint-msg">Checking...</span>}
                 {errors.phone && <span className="error-msg">{errors.phone}</span>}
               </div>
 
@@ -220,14 +273,12 @@ const AddLead = () => {
               </div>
 
               <div className="fg">
-                <label>Deal Value (₹)</label>
-                <input
-                  type="number"
-                  name="dealValue"
-                  value={form.dealValue}
-                  onChange={handleChange}
-                  placeholder="250000"
-                />
+                <label>Requirement Category</label>
+                <select name="requirementCategory" value={form.requirementCategory} onChange={handleChange}>
+                  {REQUIREMENT_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="fg">
@@ -246,7 +297,7 @@ const AddLead = () => {
             {/* Additional Info */}
             <div className="form-section full-width">
               <h3 className="section-title">Additional Information</h3>
-              
+
               <div className="fg full">
                 <label>Tags (comma separated)</label>
                 <input
@@ -276,9 +327,9 @@ const AddLead = () => {
         <div className="add-lead-preview">
           <div className="preview-card">
             <h4 className="preview-title ">Live Preview</h4>
-            
+
             <div className="preview-content">
-              {/* <div className="preview-name">{form.name || "New Lead"}</div> */}
+              {/* <div className="preview-name">{form.firstName} {form.lastName}</div> */}
               <div className="preview-company">{form.company || "Company Name"}</div>
 
               <div className="preview-meta">

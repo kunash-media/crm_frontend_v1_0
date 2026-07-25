@@ -1,11 +1,17 @@
 import "../Dashboard/Dashboard.css";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { useState, useRef, useMemo } from "react";
+import confetti from "canvas-confetti";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell, ResponsiveContainer, Legend,
 } from "recharts";
 import {
   Users, CalendarClock, Mail, Repeat, CheckCircle2, XCircle,
+  Eye, Pencil, History, CalendarPlus, Handshake, FileSpreadsheet,
+  X, Clock3, MessageSquareText, BellRing, CalendarCheck2, Inbox,
 } from "lucide-react";
 
 /* ─────────────────────────────────────────────────────────────
@@ -28,7 +34,6 @@ const STATUS_CFG = {
   cold: { label:"Cold", color:"#3b82f6", bg:"rgba(59,130,246,0.12)" },
 };
 
-
 const WORK_TYPE_CFG = {
   static:   { label:"Static Website"   },
   dynamic:  { label:"Dynamic Website"  },
@@ -36,30 +41,25 @@ const WORK_TYPE_CFG = {
   campaign: { label:"Campaign Running" },
 };
 
-// new_str
+const REQUIREMENT_CATEGORIES = [
+  "Website Design","Ecommerce Website","Dynamic Website","Landing Page",
+  "Google Ads","Meta Ads","LinkedIn Marketing","SEO","Social Media Marketing",
+  "Graphic Design","Software Development","Mobile App","HRMS","CRM",
+  "Custom Development","Other",
+];
+
 /* Deterministic hash → dark HSL color. Same key ALWAYS produces the same
-   color — no DB, no localStorage, no cache to manage. Stable across every
-   render, refresh, and session automatically. New keys just work. */
+   color — no DB, no localStorage, no cache to manage. */
 const colorForKey = (key) => {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = key.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue   = Math.abs(hash) % 360;
-  const sat   = 55 + (Math.abs(hash >> 8) % 20);   // 55–75%
-  const light = 24 + (Math.abs(hash >> 4) % 14);   // 24–38% (dark range)
+  const sat   = 55 + (Math.abs(hash >> 8) % 20);
+  const light = 24 + (Math.abs(hash >> 4) % 14);
   return `hsl(${hue}, ${sat}%, ${light}%)`;
 };
-
-/* Module-level cache: once a category key gets a color, it keeps that
-   exact color for the rest of the session — new keys get a fresh random
-   dark color, existing keys never change. Not persisted to localStorage
-   on purpose (per current no-persistence requirement); resets only on
-   a full page reload, same as DUMMY_LEADS itself. */
-const categoryColorCache = {};
-
-const colorForIndex = (i) => CHART_PALETTE[i % CHART_PALETTE.length];
-
 
 const BADGE_GRADIENTS = [
   "linear-gradient(135deg,#f97316,#ea580c)",
@@ -75,17 +75,16 @@ const pad   = (n) => String(n).padStart(2,"0");
 const toKey = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const keyToDate = (k) => { const [y,m,d]=k.split("-"); return new Date(+y,+m-1,+d); };
 
-const sameDay = (a,b) =>
-  a instanceof Date && b instanceof Date &&
-  a.getFullYear()===b.getFullYear() &&
-  a.getMonth()===b.getMonth() &&
-  a.getDate()===b.getDate();
-
 const fmtDate = (v) => {
   if (!v) return "—";
   const d = typeof v==="string" ? keyToDate(v) : v;
   return d.toLocaleDateString("en-IN",{ day:"2-digit", month:"short", year:"numeric" });
 };
+
+const splitName = (l) => ({
+  firstName: l.firstName || (l.name || "").split(" ")[0] || "",
+  lastName:  l.lastName  || (l.name || "").split(" ").slice(1).join(" ") || "",
+});
 
 /* build 42-cell calendar grid */
 const buildGrid = (year, month) => {
@@ -115,151 +114,103 @@ const rel = (offset) => {
 
 const DUMMY_LEADS = [
   {
-    id:"d1", name:"Arjun Mehta", email:"arjun@techwave.io",
+    id:"d1", firstName:"Arjun", lastName:"Mehta", email:"arjun@techwave.io",
     phone:"+91 98201 33410", company:"TechWave Solutions",
     status:"hot", priority:"P1", notes:"Requested enterprise demo. Very interested in Q3 rollout.",
-    followUpDate: rel(0),   /* TODAY  */
+    requirementCategory:"Software Development",
+    followUpDate: rel(0), followupStatus:"pending",
+    history: [
+      { date: rel(-6), note:"Initial discovery call done. Sending proposal next.", action:"done", at: new Date(today.getFullYear(),today.getMonth(),today.getDate()-6).toISOString() },
+    ],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-5).toISOString(),
     badgeGrad: BADGE_GRADIENTS[0],
-    workType:"meta", emailSent:true, outcome:null,
+    workType:"meta_ads", emailSent:true, outcome:null,
   },
   {
-    id:"d6", name:"Ananya Joshi", email:"ananya@healthplus.in",
+    id:"d6", firstName:"Ananya", lastName:"Joshi", email:"ananya@healthplus.in",
     phone:"+91 91234 56789", company:"HealthPlus Clinics",
     status:"cold", priority:"P3", notes:"Interested in 6-month pilot. Budget approval pending.",
-    followUpDate: rel(-3),
+    requirementCategory:"Dynamic Website",
+    followUpDate: rel(-3), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-15).toISOString(),
     badgeGrad: BADGE_GRADIENTS[5],
     workType:"static", emailSent:false, outcome:"lost",
   },
- 
-
-   {
-    id:"d2", name:"Priya Sharma", email:"priya@finedge.com",
+  {
+    id:"d2", firstName:"Priya", lastName:"Sharma", email:"priya@finedge.com",
     phone:"+91 99112 87654", company:"FinEdge Capital",
     status:"warm", priority:"P2", notes:"Comparing us with Salesforce. Send ROI doc.",
-    followUpDate: rel(2),
+    requirementCategory:"CRM",
+    followUpDate: rel(2), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-3).toISOString(),
     badgeGrad: BADGE_GRADIENTS[1],
     workType:"static", emailSent:true, outcome:null,
   },
   {
-    id:"d3", name:"Rahul Nair", email:"rahul.nair@cloudops.in",
+    id:"d3", firstName:"Rahul", lastName:"Nair", email:"rahul.nair@cloudops.in",
     phone:"+91 90000 12345", company:"CloudOps India",
     status:"cold", priority:"P3", notes:"Low budget this quarter. Revisit in Q4.",
-    followUpDate: rel(5),
+    requirementCategory:"Google Ads",
+    followUpDate: rel(5), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-10).toISOString(),
     badgeGrad: BADGE_GRADIENTS[2],
     workType:"campaign", emailSent:false, outcome:"lost",
   },
   {
-    id:"d4", name:"Sneha Kulkarni", email:"sneha@growthlab.co",
+    id:"d4", firstName:"Sneha", lastName:"Kulkarni", email:"sneha@growthlab.co",
     phone:"+91 87654 32100", company:"GrowthLab Agency",
     status:"hot", priority:"P1", notes:"Ready to sign. Needs legal review first.",
-    followUpDate: rel(1),
+    requirementCategory:"Landing Page",
+    followUpDate: rel(1), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-2).toISOString(),
     badgeGrad: BADGE_GRADIENTS[3],
     workType:"dynamic", emailSent:true, outcome:"won",
   },
   {
-    id:"d5", name:"Vikram Desai", email:"vikram@nexaretail.com",
+    id:"d5", firstName:"Vikram", lastName:"Desai", email:"vikram@nexaretail.com",
     phone:"+91 80000 99887", company:"Nexa Retail",
     status:"warm", priority:"P2", notes:"Attended webinar. Sent proposal, awaiting response.",
-    followUpDate: rel(7),
+    requirementCategory:"Meta Ads",
+    followUpDate: rel(7), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-7).toISOString(),
     badgeGrad: BADGE_GRADIENTS[4],
     workType:"meta_ads", emailSent:true, outcome:null,
   },
-  
   {
-    id:"d7", name:"Karthik Iyer", email:"karthik@autoserv.io",
+    id:"d7", firstName:"Karthik", lastName:"Iyer", email:"karthik@autoserv.io",
     phone:"+91 77889 11223", company:"AutoServ Logistics",
     status:"hot", priority:"P2", notes:"Pilot running. Escalate to decision-maker next call.",
-    followUpDate: rel(0),   /* TODAY also — shows multi-lead on same day */
+    requirementCategory:"Software Development",
+    followUpDate: rel(0), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-1).toISOString(),
     badgeGrad: BADGE_GRADIENTS[0],
     workType:"campaign", emailSent:true, outcome:"won",
   },
   {
-    id:"d8", name:"Meera Pillai", email:"meera@urbanstyle.in",
+    id:"d8", firstName:"Meera", lastName:"Pillai", email:"meera@urbanstyle.in",
     phone:"+91 90123 44556", company:"UrbanStyle Fashion",
     status:"warm", priority:"P2", notes:"Landed via SEO blog post, requested pricing sheet.",
-    followUpDate: rel(4),
+    requirementCategory:"SEO",
+    followUpDate: rel(4), followupStatus:"pending", history:[],
     createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-4).toISOString(),
     badgeGrad: BADGE_GRADIENTS[1],
     workType:"static", emailSent:true, outcome:null,
   },
-  {
-    id:"d9", name:"Rohan Batra", email:"rohan@finlyapp.com",
-    phone:"+91 98765 11209", company:"Finly App",
-    status:"hot", priority:"P1", notes:"Signed up via product-led onboarding flow.",
-    followUpDate: rel(3),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-6).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[2],
-    workType:"dynamic", emailSent:true, outcome:null,
-  },
-  {
-    id:"d10", name:"Ishita Rao", email:"ishita@bloomcosmetics.in",
-    phone:"+91 89012 33445", company:"Bloom Cosmetics",
-    status:"cold", priority:"P3", notes:"Clicked Instagram story ad, hasn't responded since.",
-    followUpDate: rel(9),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-8).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[3],
-    workType:"meta_ads", emailSent:false, outcome:null,
-  },
-  {
-    id:"d11", name:"Aditya Kapoor", email:"aditya@stackforge.dev",
-    phone:"+91 91234 77889", company:"StackForge Dev",
-    status:"warm", priority:"P2", notes:"Downloaded whitepaper from landing page.",
-    followUpDate: rel(6),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-12).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[4],
-    workType:"static", emailSent:true, outcome:"won",
-  },
-  {
-    id:"d12", name:"Divya Menon", email:"divya@zentrafit.com",
-    phone:"+91 90876 65432", company:"Zentra Fitness",
-    status:"hot", priority:"P1", notes:"Booked demo via Facebook lead-gen form.",
-    followUpDate: rel(1),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-9).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[5],
-    workType:"meta_ads", emailSent:true, outcome:null,
-  },
-  {
-    id:"d13", name:"Farhan Sheikh", email:"farhan@quicklogix.in",
-    phone:"+91 89999 22110", company:"QuickLogix",
-    status:"cold", priority:"P3", notes:"Referral from Q2 email drip campaign.",
-    followUpDate: rel(11),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-14).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[0],
-    workType:"campaign", emailSent:false, outcome:"lost",
-  },
-  {
-    id:"d14", name:"Neha Choudhary", email:"neha@paperlybooks.com",
-    phone:"+91 88123 45670", company:"Paperly Books",
-    status:"warm", priority:"P2", notes:"Chatbot on dynamic site captured this lead.",
-    followUpDate: rel(8),
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-11).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[1],
-    workType:"dynamic", emailSent:true, outcome:null,
-  },
-
 ];
 
 /* ─────────────────────────────────────────────────────────────
-   STORAGE
+   STORAGE  (dummy for now — swap loadLeads() with your API call)
 ───────────────────────────────────────────────────────────── */
 const loadLeads = () => DUMMY_LEADS;
 const EMPTY_FORM = {
-  name:"", email:"", phone:"", company:"",
+  firstName:"", lastName:"", email:"", phone:"", company:"",
   status:"warm", priority:"P2", notes:"", followUpDate:"",
+  requirementCategory: REQUIREMENT_CATEGORIES[0],
 };
 
 /* ─────────────────────────────────────────────────────────────
-   SUB-COMPONENTS
+   SMALL SHARED PIECES
 ───────────────────────────────────────────────────────────── */
-
-/* ── Stat Card (standard clean icon style) ── */
 const StatCard = ({ label, value, Icon, accent }) => (
   <div className="stat-card">
     <div className="stat-icon" style={{ background: accent.bg, color: accent.color }}>
@@ -272,7 +223,6 @@ const StatCard = ({ label, value, Icon, accent }) => (
   </div>
 );
 
-/* ── Chart tooltip (shared, theme-matched) ── */
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -288,21 +238,44 @@ const ChartTooltip = ({ active, payload, label }) => {
   );
 };
 
+const StatusPill = ({ status }) => (
+  <span className="status-pill" style={{ color: STATUS_CFG[status]?.color, background: STATUS_CFG[status]?.bg }}>
+    {STATUS_CFG[status]?.label}
+  </span>
+);
+const PriorityPill = ({ priority }) => (
+  <span className="status-pill" style={{ color: PRIORITY_CFG[priority]?.color, background: PRIORITY_CFG[priority]?.bg }}>
+    {priority}
+  </span>
+);
+const FollowupStatusPill = ({ status }) => (
+  <span className={`fus-pill fus-${status || "pending"}`}>
+    {status === "done" ? "Done" : "Pending"}
+  </span>
+);
 
+/* Generic overlay shell — click outside to close */
+const OverlayShell = ({ onClose, className = "", children }) => {
+  const ref = useRef(null);
+  return (
+    <div className="mo-overlay" ref={ref} onClick={(e) => e.target === ref.current && onClose()}>
+      <div className={`mo-card ${className}`}>{children}</div>
+    </div>
+  );
+};
 
-/* ── Mini Calendar Grid ── */
+/* ─────────────────────────────────────────────────────────────
+   CALENDAR GRID
+───────────────────────────────────────────────────────────── */
 const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
   const cells = useMemo(() => buildGrid(year, month), [year, month]);
   const todayKey = toKey(today);
 
   return (
     <div className="cg-wrap">
-      {/* Day-of-week headers */}
       <div className="cg-header">
         {DAY_LABELS.map((d) => <span key={d} className="cg-dow">{d}</span>)}
       </div>
-
-      {/* 42 cells */}
       <div className="cg-body">
         {cells.map(({ d, out }, idx) => {
           const key      = toKey(d);
@@ -319,17 +292,12 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
                 isToday  ? "cg-today"  : "",
                 dayLeads.length ? "cg-has" : "",
               ].filter(Boolean).join(" ")}
-              onClick={() => onDayClick(d)}
+              onClick={() => dayLeads.length && onDayClick(d, dayLeads)}
             >
-              {/* Date number */}
-              <span className={`cg-num ${isToday ? "cg-num-today" : ""}`}>
-                {d.getDate()}
-              </span>
+              <span className={`cg-num ${isToday ? "cg-num-today" : ""}`}>{d.getDate()}</span>
 
-              {/* Lead chip(s) */}
               {dayLeads.length > 0 && (
                 <div className="cg-chips">
-                  {/* Count badge */}
                   <span
                     className={`cg-badge ${hasBlink ? "cg-blink" : ""}`}
                     style={{
@@ -340,26 +308,16 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
                   >
                     {dayLeads.length}
                   </span>
-
-                  {/* Name chips — max 2 */}
                   {dayLeads.slice(0,2).map((l) => (
-                    <div
-                      key={l.id}
-                      className="cg-chip"
-                      style={{
-                        background:  STATUS_CFG[l.status]?.bg,
-                        borderLeft: `2px solid ${STATUS_CFG[l.status]?.color}`,
-                        color: STATUS_CFG[l.status]?.color,
-                      }}
-                    >
-                      {l.name.split(" ")[0]}
+                    <div key={l.id} className="cg-chip" style={{
+                      background:  STATUS_CFG[l.status]?.bg,
+                      borderLeft: `2px solid ${STATUS_CFG[l.status]?.color}`,
+                      color: STATUS_CFG[l.status]?.color,
+                    }}>
+                      {l.firstName || (l.name||"").split(" ")[0]}
                     </div>
                   ))}
-
-                  {/* overflow indicator */}
-                  {dayLeads.length > 2 && (
-                    <div className="cg-chip cg-more">+{dayLeads.length-2}</div>
-                  )}
+                  {dayLeads.length > 2 && <div className="cg-chip cg-more">+{dayLeads.length-2}</div>}
                 </div>
               )}
             </div>
@@ -370,7 +328,7 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
   );
 };
 
-/* ── Monthly Trend Bar Chart (Recharts) ── */
+/* ── Charts ── */
 const TrendBarChart = ({ data }) => (
   <ResponsiveContainer width="100%" height={220}>
     <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -389,7 +347,6 @@ const TrendBarChart = ({ data }) => (
   </ResponsiveContainer>
 );
 
-/* ── Lead Source Doughnut Chart (Recharts) ── */
 const DoughnutChart = ({ counts }) => {
   const data = useMemo(() =>
     Object.entries(counts)
@@ -401,46 +358,215 @@ const DoughnutChart = ({ counts }) => {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <PieChart>
-        <Pie
-          data={data}
-          dataKey="value"
-          nameKey="name"
-          innerRadius={52}
-          outerRadius={78}
-          paddingAngle={3}
-          cornerRadius={4}
-          stroke="none"
-        >
+        <Pie data={data} dataKey="value" nameKey="name" innerRadius={52} outerRadius={78} paddingAngle={3} cornerRadius={4} stroke="none">
           {data.map((d) => <Cell key={d.key} fill={d.color} />)}
         </Pie>
         <Tooltip content={<ChartTooltip />} />
-        <Legend
-          layout="vertical"
-          verticalAlign="middle"
-          align="right"
-          iconType="circle"
-          iconSize={8}
-          wrapperStyle={{ fontSize: 12, color: "#7c4520", fontWeight: 500 }}
-        />
+        <Legend layout="vertical" verticalAlign="middle" align="right" iconType="circle" iconSize={8}
+          wrapperStyle={{ fontSize: 12, color: "#7c4520", fontWeight: 500 }} />
       </PieChart>
     </ResponsiveContainer>
   );
 };
 
-/* ── Lead Form Modal ── */
-const LeadFormModal = ({ date, lead, onClose, onSave }) => {
-  const isEdit = !!lead;
-  const [form, setForm] = useState(
-    lead ? { ...lead } : { ...EMPTY_FORM, followUpDate: toKey(date) }
-  );
-  const [errs, setErrs] = useState({});
-  const ref = useRef(null);
+/* ─────────────────────────────────────────────────────────────
+   OVERLAY: Day leads table (calendar cell click)
+───────────────────────────────────────────────────────────── */
+const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextFollowup, onHistory }) => (
+  <OverlayShell onClose={onClose} className="mo-wide">
+    <div className="mo-head">
+      <div>
+        <p className="mo-sub">{fmtDate(date).toUpperCase()}</p>
+        <h2 className="mo-title">Follow-ups for this day</h2>
+      </div>
+      <button className="mo-x" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="mo-body">
+      <div className="tbl-scroll">
+        <table className="lead-tbl day-ov-tbl">
+          <thead>
+            <tr>
+              <th>First Name</th><th>Last Name</th><th>Mobile</th><th>Company</th>
+              <th>Requirement</th><th>Priority</th><th>Follow-up Date</th><th>Note</th>
+              <th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leads.map((l) => (
+              <tr key={l.id} className={`tbl-row tbl-${l.status}`}>
+                <td className="td-name">{l.firstName}</td>
+                <td className="td-name">{l.lastName}</td>
+                <td className="td-phone">{l.phone}</td>
+                <td className="td-co">{l.company || "—"}</td>
+                <td>{l.requirementCategory || "—"}</td>
+                <td><PriorityPill priority={l.priority} /></td>
+                <td>{fmtDate(l.followUpDate)}</td>
+                <td className="td-note">{(l.notes || "—").slice(0, 40)}</td>
+                <td><FollowupStatusPill status={l.followupStatus} /></td>
+                <td>
+                  <div className="act-row">
+                    <button className="act-btn act-v" title="View" onClick={() => onView(l)}><Eye size={15} /></button>
+                    <button className="act-btn act-e" title="Edit" onClick={() => onEdit(l)}><Pencil size={15} /></button>
+                    <button className="act-btn act-done" title="Mark done" onClick={() => onDone(l)}><CheckCircle2 size={15} /></button>
+                    <button className="act-btn act-next" title="Next follow-up" onClick={() => onNextFollowup(l)}><CalendarPlus size={15} /></button>
+                    <button className="act-btn act-hist" title="History" onClick={() => onHistory(l)}><History size={15} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div className="mo-foot"><button className="btn-cancel" onClick={onClose}>Close</button></div>
+  </OverlayShell>
+);
 
-  const set  = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+/* ── OVERLAY: Mark as done (note + submit/cancel) ── */
+const DoneOverlay = ({ lead, onClose, onSubmit }) => {
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState("");
+  const submit = () => {
+    if (!note.trim()) { setErr("Please add a note before submitting"); return; }
+    onSubmit(lead, note.trim());
+  };
+  return (
+    <OverlayShell onClose={onClose}>
+      <div className="mo-head">
+        <div><p className="mo-sub">MARK AS DONE</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <div className="fg">
+          <label>Follow-up Note *</label>
+          <textarea rows={4} placeholder="What happened on this call/meeting?"
+            value={note} onChange={(e) => { setNote(e.target.value); setErr(""); }} className={err ? "fe" : ""} />
+          {err && <span className="fe-msg">{err}</span>}
+        </div>
+      </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose}>Cancel</button>
+        <button className="btn-save btn-done" onClick={submit}>Submit</button>
+      </div>
+    </OverlayShell>
+  );
+};
+
+/* ── OVERLAY: Next follow-up (date picker + submit/cancel) ── */
+const NextFollowupOverlay = ({ lead, onClose, onSubmit }) => {
+  const [date, setDate] = useState("");
+  const [err, setErr] = useState("");
+  const submit = () => {
+    if (!date) { setErr("Pick a follow-up date"); return; }
+    onSubmit(lead, date);
+  };
+  return (
+    <OverlayShell onClose={onClose}>
+      <div className="mo-head">
+        <div><p className="mo-sub">NEXT FOLLOW-UP</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <div className="fg">
+          <label>Next Follow-up Date *</label>
+          <input type="date" value={date} className={err ? "fe" : ""}
+            onChange={(e) => { setDate(e.target.value); setErr(""); }} />
+          {err && <span className="fe-msg">{err}</span>}
+        </div>
+      </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose}>Cancel</button>
+        <button className="btn-save" onClick={submit}>Submit</button>
+      </div>
+    </OverlayShell>
+  );
+};
+
+/* ── OVERLAY: History ── */
+const HistoryOverlay = ({ lead, onClose }) => (
+  <OverlayShell onClose={onClose}>
+    <div className="mo-head">
+      <div><p className="mo-sub">FOLLOW-UP HISTORY</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+      <button className="mo-x" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="mo-body">
+      {(!lead.history || lead.history.length === 0) ? (
+        <div className="hist-empty">
+          <Inbox size={30} strokeWidth={1.5} />
+          <p>No past follow-ups for this lead</p>
+        </div>
+      ) : (
+        <div className="hist-list">
+          {[...lead.history].reverse().map((h, i) => (
+            <div key={i} className={`hist-item hist-${h.action}`}>
+              <div className="hist-icon">{h.action === "done" ? <CheckCircle2 size={14} /> : <CalendarPlus size={14} />}</div>
+              <div className="hist-content">
+                <div className="hist-row">
+                  <span className="hist-date">{fmtDate(h.date)}</span>
+                  <span className="hist-tag">{h.action === "done" ? "Completed" : "Carried Forward"}</span>
+                </div>
+                <p className="hist-note">{h.note}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+    <div className="mo-foot"><button className="btn-save" onClick={onClose}>Close</button></div>
+  </OverlayShell>
+);
+
+/* ── OVERLAY: split read-only lead detail (view) ── */
+const LeadDetailOverlay = ({ lead, onClose }) => (
+  <OverlayShell onClose={onClose} className="mo-view">
+    <div className="mo-head">
+      <div><p className="mo-sub">LEAD DETAILS</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+      <button className="mo-x" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="mo-body">
+      <div className="vg-section">
+        <p className="vg-section-title">Basic Information</p>
+        <div className="vg-grid">
+          <div className="vg-item"><span className="vg-lbl">First Name</span><span className="vg-val">{lead.firstName}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Last Name</span><span className="vg-val">{lead.lastName}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Email</span><span className="vg-val">{lead.email}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Phone</span><span className="vg-val">{lead.phone}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Company</span><span className="vg-val">{lead.company || "—"}</span></div>
+        </div>
+      </div>
+      <div className="vg-section">
+        <p className="vg-section-title">Lead Details</p>
+        <div className="vg-grid">
+          <div className="vg-item"><span className="vg-lbl">Requirement</span><span className="vg-val">{lead.requirementCategory || "—"}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Status</span><StatusPill status={lead.status} /></div>
+          <div className="vg-item"><span className="vg-lbl">Priority</span><PriorityPill priority={lead.priority} /></div>
+          <div className="vg-item"><span className="vg-lbl">Follow-up</span><span className="vg-val">{fmtDate(lead.followUpDate)}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Follow-up Status</span><FollowupStatusPill status={lead.followupStatus} /></div>
+          <div className="vg-item"><span className="vg-lbl">Created</span><span className="vg-val">{fmtDate(lead.createdAt)}</span></div>
+        </div>
+      </div>
+      <div className="vg-section">
+        <p className="vg-section-title">Notes</p>
+        <p className="vg-val vg-notes">{lead.notes || "—"}</p>
+      </div>
+    </div>
+    <div className="mo-foot"><button className="btn-save" onClick={onClose}>Close</button></div>
+  </OverlayShell>
+);
+
+/* ── Edit form (all fields editable) ── */
+const LeadFormModal = ({ date, lead, onClose, onSave }) => {
+  const [form, setForm] = useState(() => ({
+    ...EMPTY_FORM,
+    ...(lead ? { ...lead, ...splitName(lead) } : { followUpDate: toKey(date) }),
+  }));
+  const [errs, setErrs] = useState({});
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim())  e.name  = "Name is required";
+    if (!form.firstName.trim()) e.firstName = "First name is required";
+    if (!form.lastName.trim())  e.lastName  = "Last name is required";
     if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Valid email required";
     if (!form.phone.trim()) e.phone = "Phone is required";
     return e;
@@ -449,148 +575,191 @@ const LeadFormModal = ({ date, lead, onClose, onSave }) => {
   const submit = () => {
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
-    onSave(form, isEdit);
+    onSave(form, !!lead);
   };
 
   return (
-    <div className="mo-overlay" ref={ref} onClick={(e) => e.target===ref.current && onClose()}>
-      <div className="mo-card">
-
-        <div className="mo-head">
-          <div>
-            <p className="mo-sub">{isEdit ? "EDIT LEAD" : fmtDate(date).toUpperCase()}</p>
-            <h2 className="mo-title">{isEdit ? "Update Lead" : "Add New Lead"}</h2>
-          </div>
-          <button className="mo-x" onClick={onClose}>✕</button>
+    <OverlayShell onClose={onClose}>
+      <div className="mo-head">
+        <div>
+          <p className="mo-sub">{lead ? "EDIT LEAD" : fmtDate(date).toUpperCase()}</p>
+          <h2 className="mo-title">{lead ? "Update Lead" : "Add New Lead"}</h2>
         </div>
-
-        <div className="mo-body">
-          <div className="fg-grid">
-
-            <div className="fg">
-              <label>Full Name *</label>
-              <input value={form.name} placeholder="Arjun Mehta"
-                className={errs.name?"fe":""} onChange={(e)=>set("name",e.target.value)} />
-              {errs.name && <span className="fe-msg">{errs.name}</span>}
-            </div>
-
-            <div className="fg">
-              <label>Email *</label>
-              <input type="email" value={form.email} placeholder="arjun@company.com"
-                className={errs.email?"fe":""} onChange={(e)=>set("email",e.target.value)} />
-              {errs.email && <span className="fe-msg">{errs.email}</span>}
-            </div>
-
-            <div className="fg">
-              <label>Phone *</label>
-              <input type="tel" value={form.phone} placeholder="+91 98765 43210"
-                className={errs.phone?"fe":""} onChange={(e)=>set("phone",e.target.value)} />
-              {errs.phone && <span className="fe-msg">{errs.phone}</span>}
-            </div>
-
-            <div className="fg">
-              <label>Company</label>
-              <input value={form.company} placeholder="Acme Corp"
-                onChange={(e)=>set("company",e.target.value)} />
-            </div>
-
-            <div className="fg">
-              <label>Status</label>
-              <select value={form.status} onChange={(e)=>set("status",e.target.value)}>
-                <option value="hot">🔥 Hot</option>
-                <option value="warm">🌤 Warm</option>
-                <option value="cold">❄️ Cold</option>
-              </select>
-            </div>
-
-            <div className="fg">
-              <label>Priority</label>
-              <div className="prio-row">
-                {["P1","P2","P3"].map((p)=>(
-                  <button key={p} type="button"
-                    className={`prio-btn prio-${p.toLowerCase()} ${form.priority===p?"active":""}`}
-                    onClick={()=>set("priority",p)}>{p}</button>
-                ))}
-              </div>
-            </div>
-
-            <div className="fg fg-full">
-              <label>Follow-up Date</label>
-              <input type="date" value={form.followUpDate}
-                onChange={(e)=>set("followUpDate",e.target.value)} />
-            </div>
-
-            <div className="fg fg-full">
-              <label>Notes</label>
-              <textarea rows={3} placeholder="Add context about this lead…"
-                value={form.notes} onChange={(e)=>set("notes",e.target.value)} />
-            </div>
-
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <div className="fg-grid">
+          <div className="fg">
+            <label>First Name *</label>
+            <input value={form.firstName} placeholder="Arjun" className={errs.firstName ? "fe" : ""} onChange={(e) => set("firstName", e.target.value)} />
+            {errs.firstName && <span className="fe-msg">{errs.firstName}</span>}
           </div>
-        </div>
-
-        <div className="mo-foot">
-          <button className="btn-cancel" onClick={onClose}>Cancel</button>
-          <button className="btn-save"   onClick={submit}>
-            {isEdit ? "Update Lead" : "Save Lead"}
-          </button>
+          <div className="fg">
+            <label>Last Name *</label>
+            <input value={form.lastName} placeholder="Mehta" className={errs.lastName ? "fe" : ""} onChange={(e) => set("lastName", e.target.value)} />
+            {errs.lastName && <span className="fe-msg">{errs.lastName}</span>}
+          </div>
+          <div className="fg">
+            <label>Email *</label>
+            <input type="email" value={form.email} placeholder="arjun@company.com" className={errs.email ? "fe" : ""} onChange={(e) => set("email", e.target.value)} />
+            {errs.email && <span className="fe-msg">{errs.email}</span>}
+          </div>
+          <div className="fg">
+            <label>Phone *</label>
+            <input type="tel" value={form.phone} placeholder="+91 98765 43210" className={errs.phone ? "fe" : ""} onChange={(e) => set("phone", e.target.value)} />
+            {errs.phone && <span className="fe-msg">{errs.phone}</span>}
+          </div>
+          <div className="fg">
+            <label>Company</label>
+            <input value={form.company} placeholder="Acme Corp" onChange={(e) => set("company", e.target.value)} />
+          </div>
+          <div className="fg">
+            <label>Requirement Category</label>
+            <select value={form.requirementCategory} onChange={(e) => set("requirementCategory", e.target.value)}>
+              {REQUIREMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="fg">
+            <label>Status</label>
+            <select value={form.status} onChange={(e) => set("status", e.target.value)}>
+              <option value="hot">🔥 Hot</option>
+              <option value="warm">🌤 Warm</option>
+              <option value="cold">❄️ Cold</option>
+            </select>
+          </div>
+          <div className="fg">
+            <label>Priority</label>
+            <div className="prio-row">
+              {["P1","P2","P3"].map((p) => (
+                <button key={p} type="button" className={`prio-btn prio-${p.toLowerCase()} ${form.priority===p?"active":""}`} onClick={() => set("priority", p)}>{p}</button>
+              ))}
+            </div>
+          </div>
+          <div className="fg fg-full">
+            <label>Follow-up Date</label>
+            <input type="date" value={form.followUpDate} onChange={(e) => set("followUpDate", e.target.value)} />
+          </div>
+          <div className="fg fg-full">
+            <label>Notes</label>
+            <textarea rows={3} placeholder="Add context about this lead…" value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+          </div>
         </div>
       </div>
-    </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose}>Cancel</button>
+        <button className="btn-save" onClick={submit}>{lead ? "Update Lead" : "Save Lead"}</button>
+      </div>
+    </OverlayShell>
   );
 };
 
-/* ── View Modal ── */
-const ViewModal = ({ lead, onClose }) => {
-  const ref = useRef(null);
-  return (
-    <div className="mo-overlay" ref={ref} onClick={(e)=>e.target===ref.current&&onClose()}>
-      <div className="mo-card mo-view">
-        <div className="mo-head">
-          <div>
-            <p className="mo-sub">LEAD DETAILS</p>
-            <h2 className="mo-title">{lead.name}</h2>
-          </div>
-          <button className="mo-x" onClick={onClose}>✕</button>
-        </div>
-        <div className="mo-body">
-          <div className="vg-grid">
-            {[["Email",lead.email],["Phone",lead.phone],
-              ["Company",lead.company||"—"],["Created",fmtDate(lead.createdAt)]].map(([l,v])=>(
-              <div className="vg-item" key={l}>
-                <span className="vg-lbl">{l}</span>
-                <span className="vg-val">{v}</span>
-              </div>
-            ))}
-            <div className="vg-item">
-              <span className="vg-lbl">Status</span>
-              <span className="status-pill"
-                style={{color:STATUS_CFG[lead.status]?.color,background:STATUS_CFG[lead.status]?.bg}}>
-                {STATUS_CFG[lead.status]?.label}
-              </span>
-            </div>
-            <div className="vg-item">
-              <span className="vg-lbl">Priority</span>
-              <span className="status-pill"
-                style={{color:PRIORITY_CFG[lead.priority]?.color,background:PRIORITY_CFG[lead.priority]?.bg}}>
-                {lead.priority}
-              </span>
-            </div>
-            <div className="vg-item">
-              <span className="vg-lbl">Follow-up</span>
-              <span className="vg-val">{fmtDate(lead.followUpDate)}</span>
-            </div>
-            <div className="vg-item vg-full">
-              <span className="vg-lbl">Notes</span>
-              <span className="vg-val">{lead.notes||"—"}</span>
-            </div>
-          </div>
-        </div>
-        <div className="mo-foot">
-          <button className="btn-save" onClick={onClose}>Close</button>
-        </div>
+/* ── OVERLAY: Convert (deal done!/cancel) ── */
+const ConvertOverlay = ({ lead, onClose, onConfirm }) => (
+  <OverlayShell onClose={onClose}>
+    <div className="mo-head">
+      <div><p className="mo-sub">CONVERT LEAD</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+      <button className="mo-x" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="mo-body convert-body">
+      <Handshake size={40} strokeWidth={1.5} className="convert-icon" />
+      <p className="convert-msg">Mark this lead as a closed, won deal?</p>
+    </div>
+    <div className="mo-foot">
+      <button className="btn-cancel" onClick={onClose}>Cancel</button>
+      <button className="btn-save btn-convert" onClick={() => onConfirm(lead)}>Deal Done! 🎉</button>
+    </div>
+  </OverlayShell>
+);
+
+
+/* ── OVERLAY: Confirm delete (yes/no) ── */
+const DeleteConfirmOverlay = ({ label, onCancel, onConfirm }) => (
+  <OverlayShell onClose={onCancel}>
+    <div className="mo-head">
+      <div><p className="mo-sub">CONFIRM DELETE</p><h2 className="mo-title">{label}</h2></div>
+      <button className="mo-x" onClick={onCancel}><X size={16} /></button>
+    </div>
+    <div className="mo-body convert-body">
+      <XCircle size={40} strokeWidth={1.5} className="delete-icon" />
+      <p className="convert-msg">This action can't be undone. Are you sure?</p>
+    </div>
+    <div className="mo-foot">
+      <button className="btn-cancel" onClick={onCancel}>No, Keep It</button>
+      <button className="btn-save btn-delete" onClick={onConfirm}>Yes, Delete</button>
+    </div>
+  </OverlayShell>
+);
+
+/* ── Celebration burst (confetti + sound + message) ── */
+// TODO: drop your own clap sound file at public/sounds/clap.mp3 — this path is a placeholder.
+const CLAP_SOUND_URL = "/sounds/clap.mp3";
+const CelebrationOverlay = ({ name }) => (
+  <div className="celebrate-overlay">
+    <div className="celebrate-card">
+      <Handshake size={46} className="celebrate-icon" />
+      <h2>Deal Closed! 🎉</h2>
+      <p>{name} is officially a customer. Great work!</p>
+    </div>
+  </div>
+);
+
+/* ── OVERLAY: Bulk email template picker ── */
+const BulkEmailOverlay = ({ count, onClose, onSend }) => (
+  <OverlayShell onClose={onClose}>
+    <div className="mo-head">
+      <div><p className="mo-sub">SEND EMAIL</p><h2 className="mo-title">{count} lead{count!==1?"s":""} selected</h2></div>
+      <button className="mo-x" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="mo-body">
+      <p className="email-hint">Choose a message template to send to all selected leads:</p>
+      <div className="email-tpl-row">
+        <button className="email-tpl-btn" onClick={() => onSend("followup")}>
+          <MessageSquareText size={20} /><span>Follow-up</span>
+        </button>
+        <button className="email-tpl-btn" onClick={() => onSend("meet_reminder")}>
+          <CalendarCheck2 size={20} /><span>Meet Reminder</span>
+        </button>
+        <button className="email-tpl-btn" onClick={() => onSend("normal_reminder")}>
+          <BellRing size={20} /><span>Normal Reminder</span>
+        </button>
       </div>
     </div>
+    <div className="mo-foot"><button className="btn-cancel" onClick={onClose}>Cancel</button></div>
+  </OverlayShell>
+);
+
+/* ── OVERLAY: Export to Excel ── */
+const ExportOverlay = ({ statusFilter, onClose, onExport }) => {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [month, setMonth] = useState("");
+  const noFilter = !from && !to && !month && statusFilter === "all";
+
+  return (
+    <OverlayShell onClose={onClose}>
+      <div className="mo-head">
+        <div><p className="mo-sub">EXPORT LEADS</p><h2 className="mo-title">Download Excel Sheet</h2></div>
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <div className="fg-grid">
+          <div className="fg"><label>From Date</label><input type="date" value={from} onChange={(e)=>{setFrom(e.target.value); setMonth("");}} /></div>
+          <div className="fg"><label>To Date</label><input type="date" value={to} onChange={(e)=>{setTo(e.target.value); setMonth("");}} /></div>
+          <div className="fg fg-full"><label>Or Pick a Month</label><input type="month" value={month} onChange={(e)=>{setMonth(e.target.value); setFrom(""); setTo("");}} /></div>
+        </div>
+        <p className="export-note">
+          {noFilter
+            ? "No filters selected — this will export all leads."
+            : `Exporting leads${statusFilter!=="all" ? ` marked "${STATUS_CFG[statusFilter]?.label}"` : ""}${month ? ` for ${month}` : (from||to) ? ` from ${from||"…"} to ${to||"…"}` : ""}.`}
+        </p>
+      </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose}>Cancel</button>
+        <button className="btn-save" onClick={() => onExport({ from, to, month })}>
+          <FileSpreadsheet size={15} style={{ marginRight: 6 }} /> Export
+        </button>
+      </div>
+    </OverlayShell>
   );
 };
 
@@ -600,30 +769,40 @@ const ViewModal = ({ lead, onClose }) => {
 const Dashboard = () => {
   const [leads,     setLeads]     = useState(loadLeads);
   const [activeYM,  setActiveYM]  = useState({ year: today.getFullYear(), month: today.getMonth() });
-  const [modalDate, setModalDate] = useState(null);   // clicking a cell
-  const [editLead,  setEditLead]  = useState(null);
-  const [viewLead,  setViewLead]  = useState(null);
-  const [search,    setSearch]    = useState("");
-  const [stFilter,  setStFilter]  = useState("all");
-  const [selected,  setSelected]  = useState([]);
 
+  const [dayOverlay, setDayOverlay]   = useState(null); // { date, leads }
+  const [editLead,   setEditLead]     = useState(null);
+  const [viewLead,   setViewLead]     = useState(null);
+  const [doneLead,   setDoneLead]     = useState(null);
+  const [nextLead,   setNextLead]     = useState(null);
+  const [histLead,   setHistLead]     = useState(null);
+  const [convertLead,setConvertLead]  = useState(null);
+  const [celebrate,  setCelebrate]    = useState(null); // name string while showing
 
-  /* date → leads map */
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [exportOpen,    setExportOpen]    = useState(false);
+
+  const [search,   setSearch]   = useState("");
+  const [stFilter, setStFilter] = useState("all");
+  const [selected, setSelected] = useState([]);
+
+  const [deleteTarget, setDeleteTarget] = useState(null); // { type: "one", id } | { type: "bulk" }
+
+  /* date → pending leads map (done leads never show again — dedupes automatically) */
   const leadsByDate = useMemo(() => {
     const map = {};
     leads.forEach((l) => {
-      if (!l.followUpDate) return;
+      if (!l.followUpDate || l.followupStatus === "done") return;
       (map[l.followUpDate] = map[l.followUpDate] || []).push(l);
     });
     return map;
   }, [leads]);
 
-  /* stat cards */
   const stats = useMemo(() => {
     const todayKey = toKey(today);
     return {
       total: leads.length,
-      todayFollowups: leads.filter((l) => l.followUpDate === todayKey).length,
+      todayFollowups: leads.filter((l) => l.followUpDate === todayKey && l.followupStatus !== "done").length,
       emailSent: leads.filter((l) => l.emailSent).length,
       totalFollowups: leads.filter((l) => l.followUpDate).length,
       won: leads.filter((l) => l.outcome === "won").length,
@@ -631,10 +810,8 @@ const Dashboard = () => {
     };
   }, [leads]);
 
-  /* monthly trend — last 6 months, by createdAt */
   const monthlyTrend = useMemo(() => {
-    const buckets = {};
-    const labels = [];
+    const buckets = {}; const labels = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
@@ -649,94 +826,158 @@ const Dashboard = () => {
     return labels.map((l) => ({ ...l, count: buckets[l.key] }));
   }, [leads]);
 
-  /* lead source distribution */
- /* company working-category distribution */
   const workTypeDist = useMemo(() => {
     const counts = { static: 0, dynamic: 0, meta_ads: 0, campaign: 0 };
-    leads.forEach((l) => {
-      if (l.workType && counts[l.workType] !== undefined) counts[l.workType]++;
-    });
+    leads.forEach((l) => { if (l.workType && counts[l.workType] !== undefined) counts[l.workType]++; });
     return counts;
   }, [leads]);
 
-  /* upcoming sidebar — next 6 (Today first, then soonest future) */
   const upcoming = useMemo(() => {
     const todayKey = toKey(today);
-
     return [...leads]
-      .filter((l) => l.followUpDate)
+      .filter((l) => l.followUpDate && l.followupStatus !== "done")
       .sort((a, b) => {
-        const isTodayA = a.followUpDate === todayKey;
-        const isTodayB = b.followUpDate === todayKey;
-
-        // Today always comes first
+        const isTodayA = a.followUpDate === todayKey, isTodayB = b.followUpDate === todayKey;
         if (isTodayA && !isTodayB) return -1;
         if (isTodayB && !isTodayA) return 1;
-
-        // Then sort by date (ascending = soonest first)
         return a.followUpDate.localeCompare(b.followUpDate);
       })
       .slice(0, 6);
   }, [leads]);
 
-  /* table rows */
   const filtered = useMemo(() =>
     leads.filter((l) =>
-      (stFilter==="all" || l.status===stFilter) &&
-      [l.name,l.email,l.company||""].some((f)=>
-        f.toLowerCase().includes(search.toLowerCase()))
+      (stFilter === "all" || l.status === stFilter) &&
+      [l.firstName, l.lastName, l.email, l.company || ""].some((f) => (f||"").toLowerCase().includes(search.toLowerCase()))
     ),
   [leads, stFilter, search]);
 
-  /* selection */
-  const visIds    = filtered.map((l)=>l.id);
-  const allCheck  = visIds.length>0 && visIds.every((id)=>selected.includes(id));
-  const toggleAll = () =>
-    allCheck
-      ? setSelected((p)=>p.filter((id)=>!visIds.includes(id)))
-      : setSelected((p)=>[...new Set([...p,...visIds])]);
-  const toggleOne = (id) =>
-    setSelected((p)=>p.includes(id)?p.filter((s)=>s!==id):[...p,id]);
+  const visIds    = filtered.map((l) => l.id);
+  const allCheck  = visIds.length > 0 && visIds.every((id) => selected.includes(id));
+  const toggleAll = () => allCheck
+    ? setSelected((p) => p.filter((id) => !visIds.includes(id)))
+    : setSelected((p) => [...new Set([...p, ...visIds])]);
+  const toggleOne = (id) => setSelected((p) => p.includes(id) ? p.filter((s) => s !== id) : [...p, id]);
 
-  /* CRUD */
+  /* ── CRUD ── */
   const handleSave = (form, isEdit) => {
     if (isEdit) {
-      setLeads((p)=>p.map((l)=>l.id===form.id?{...form}:l));
+      setLeads((p) => p.map((l) => (l.id === form.id ? { ...form } : l)));
     } else {
-      setLeads((p)=>[
-        { ...form, id: Date.now().toString(),
-          createdAt: new Date().toISOString(),
-          badgeGrad: randomGrad() },
-        ...p,
-      ]);
+      setLeads((p) => [{ ...form, id: Date.now().toString(), createdAt: new Date().toISOString(), badgeGrad: randomGrad(), followupStatus: "pending", history: [] }, ...p]);
     }
-    setModalDate(null); setEditLead(null);
+    toast.success(isEdit ? "Lead updated" : "Lead created");
+    setEditLead(null);
   };
 
-  const delOne = (id) => {
-    if (!window.confirm("Delete this lead?")) return;
-    setLeads((p)=>p.filter((l)=>l.id!==id));
-    setSelected((p)=>p.filter((s)=>s!==id));
-  };
+const delOne = (id) => setDeleteTarget({ type: "one", id });
 
   const delBulk = () => {
-    if (!selected.length || !window.confirm(`Delete ${selected.length} leads?`)) return;
-    setLeads((p)=>p.filter((l)=>!selected.includes(l.id)));
-    setSelected([]);
+    if (!selected.length) return;
+    setDeleteTarget({ type: "bulk" });
   };
 
-  /* month nav */
-  const prevMonth = () => setActiveYM(({year,month}) =>
-    month===0 ? {year:year-1,month:11} : {year,month:month-1});
-  const nextMonth = () => setActiveYM(({year,month}) =>
-    month===11 ? {year:year+1,month:0} : {year,month:month+1});
+  const confirmDelete = () => {
+    if (deleteTarget.type === "one") {
+      setLeads((p) => p.filter((l) => l.id !== deleteTarget.id));
+      setSelected((p) => p.filter((s) => s !== deleteTarget.id));
+      toast.success("Lead deleted");
+    } else {
+      setLeads((p) => p.filter((l) => !selected.includes(l.id)));
+      toast.success(`${selected.length} leads deleted`);
+      setSelected([]);
+    }
+    setDeleteTarget(null);
+  };
+  /* ── Follow-up flow handlers ── */
+  const handleDoneSubmit = (lead, note) => {
+    setLeads((p) => p.map((l) => l.id === lead.id ? {
+      ...l,
+      followupStatus: "done",
+      history: [...(l.history || []), { date: l.followUpDate, note, action: "done", at: new Date().toISOString() }],
+    } : l));
+    setDoneLead(null);
+
+    toast.success("Follow-up marked as done");
+
+    // keep the day overlay's snapshot in sync if it's open
+    setDayOverlay((ov) => ov ? { ...ov, leads: ov.leads.filter((x) => x.id !== lead.id) } : ov);
+  };
+
+  const handleNextFollowupSubmit = (lead, newDate) => {
+    setLeads((p) => p.map((l) => l.id === lead.id ? {
+      ...l,
+      history: [...(l.history || []), { date: l.followUpDate, note: `Carried forward to ${fmtDate(newDate)}`, action: "next-followup", at: new Date().toISOString() }],
+      followUpDate: newDate,
+    } : l));
+    setNextLead(null);
+    toast.success("Next follow-up scheduled");
+    setDayOverlay((ov) => ov ? { ...ov, leads: ov.leads.filter((x) => x.id !== lead.id) } : ov);
+  };
+
+  /* ── Convert + celebration ── */
+  const handleConvertConfirm = (lead) => {
+    setConvertLead(null);
+    setLeads((p) => p.map((l) => l.id === lead.id ? { ...l, outcome: "won" } : l));
+
+    // confetti burst
+    confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+    setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 70, origin: { x: 0 } }), 200);
+    setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 70, origin: { x: 1 } }), 200);
+
+    try { const audio = new Audio(CLAP_SOUND_URL); audio.volume = 0.6; audio.play().catch(() => {}); } catch (e) {}
+
+    setCelebrate(`${lead.firstName} ${lead.lastName}`);
+    setTimeout(() => setCelebrate(null), 2600);
+  };
+
+  /* ── Bulk email (dummy — wire to your API) ── */
+  const handleBulkSend = (template) => {
+    const recipients = leads.filter((l) => selected.includes(l.id)).map((l) => l.email);
+    // TODO: replace with your real bulk-email API call, e.g.
+    // await api.post('/leads/bulk-email', { template, leadIds: selected })
+    console.log("Sending", template, "to", recipients);
+    toast.success(`"${template.replace("_"," ")}" email queued for ${recipients.length} lead(s).`);
+    setBulkEmailOpen(false);
+  };
+
+  /* ── Export to Excel ── */
+  const handleExport = ({ from, to, month }) => {
+    let rows = leads.filter((l) => stFilter === "all" || l.status === stFilter);
+    if (month) {
+      rows = rows.filter((l) => l.followUpDate && l.followUpDate.startsWith(month));
+    } else if (from || to) {
+      rows = rows.filter((l) => {
+        if (!l.followUpDate) return false;
+        if (from && l.followUpDate < from) return false;
+        if (to && l.followUpDate > to) return false;
+        return true;
+      });
+    }
+    const data = rows.map((l) => ({
+      "First Name": l.firstName, "Last Name": l.lastName, "Email": l.email, "Phone": l.phone,
+      "Company": l.company || "", "Requirement": l.requirementCategory || "",
+      "Status": STATUS_CFG[l.status]?.label || l.status, "Priority": l.priority,
+      "Follow-up Date": fmtDate(l.followUpDate), "Follow-up Status": l.followupStatus === "done" ? "Done" : "Pending",
+      "Outcome": l.outcome || "-",
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads");
+    XLSX.writeFile(wb, `leads-export-${toKey(today)}.xlsx`);
+
+    toast.success("Excel sheet downloaded");
+    setExportOpen(false);
+  };
+
+  const prevMonth = () => setActiveYM(({year,month}) => month===0 ? {year:year-1,month:11} : {year,month:month-1});
+  const nextMonth = () => setActiveYM(({year,month}) => month===11 ? {year:year+1,month:0} : {year,month:month+1});
 
   const todayKey = toKey(today);
 
   return (
     <div className="root-dashboard">
-
-      {/* ── NAV ── */}
+      <ToastContainer position="top-right" autoClose={2500} theme="light" />
       <nav className="dash-nav">
         <div className="nav-brand">
           <span className="font-mono text-sm font-thin text-gray-600">Hey! Let's make it happen :)</span>
@@ -745,30 +986,19 @@ const Dashboard = () => {
 
       <div className="dash-body">
 
-        {/* ════════════════════════════════════════
-            STAT CARDS
-        ════════════════════════════════════════ */}
         <section className="stats-row">
-          <StatCard label="Total Leads"       value={stats.total}          Icon={Users}         accent={{ bg:"rgba(249,115,22,.13)", color:"#ea580c" }} />
-          <StatCard label="Today Follow-ups"  value={stats.todayFollowups} Icon={CalendarClock} accent={{ bg:"rgba(239,68,68,.13)",  color:"#ef4444" }} />
-          <StatCard label="WhatsApp"       value={stats.emailSent}      Icon={Mail}          accent={{ bg:"rgba(59,130,246,.13)", color:"#3b82f6" }} />
-          <StatCard label="Total Follow-ups"  value={stats.totalFollowups} Icon={Repeat}        accent={{ bg:"rgba(245,158,11,.13)", color:"#f59e0b" }} />
-          <StatCard label="Won"      value={stats.won}            Icon={CheckCircle2}  accent={{ bg:"rgba(34,197,94,.13)",  color:"#16a34a" }} />
-          <StatCard label="Lost Leads"        value={stats.lost}           Icon={XCircle}       accent={{ bg:"rgba(107,114,128,.13)",color:"#6b7280" }} />
+          <StatCard label="Total Leads"      value={stats.total}          Icon={Users}         accent={{ bg:"rgba(249,115,22,.13)", color:"#ea580c" }} />
+          <StatCard label="Today Follow-ups" value={stats.todayFollowups} Icon={CalendarClock} accent={{ bg:"rgba(239,68,68,.13)",  color:"#ef4444" }} />
+          <StatCard label="WhatsApp"         value={stats.emailSent}      Icon={Mail}          accent={{ bg:"rgba(59,130,246,.13)", color:"#3b82f6" }} />
+          <StatCard label="Total Follow-ups" value={stats.totalFollowups} Icon={Repeat}        accent={{ bg:"rgba(245,158,11,.13)", color:"#f59e0b" }} />
+          <StatCard label="Won"              value={stats.won}            Icon={CheckCircle2}  accent={{ bg:"rgba(34,197,94,.13)",  color:"#16a34a" }} />
+          <StatCard label="Lost Leads"       value={stats.lost}           Icon={XCircle}       accent={{ bg:"rgba(107,114,128,.13)",color:"#6b7280" }} />
         </section>
 
-      
-        {/* ════════════════════════════════════════
-            CALENDAR SECTION
-        ════════════════════════════════════════ */}
         <section className="cal-section">
-
-          {/* LEFT — month/year + upcoming */}
           <div className="cal-left">
             <div className="cal-month-block">
-              <p className="cal-month-name">
-                {MONTH_NAMES[activeYM.month].toUpperCase()}
-              </p>
+              <p className="cal-month-name">{MONTH_NAMES[activeYM.month].toUpperCase()}</p>
               <h1 className="cal-year">{activeYM.year}</h1>
             </div>
 
@@ -779,22 +1009,15 @@ const Dashboard = () => {
                 {upcoming.map((lead) => {
                   const isToday = lead.followUpDate === todayKey;
                   return (
-                    <div
-                      key={lead.id}
-                      className={`up-card ${isToday?"up-card-today":""}`}
-                      onClick={() => setViewLead(lead)}
-                    >
+                    <div key={lead.id} className={`up-card ${isToday?"up-card-today":""}`} onClick={() => setViewLead(lead)}>
                       {isToday && <span className="up-today-tag">TODAY</span>}
                       <div className="up-row">
-                        <span className="up-name">{lead.name}</span>
+                        <span className="up-name">{lead.firstName} {lead.lastName}</span>
                         <span className="up-date">{fmtDate(lead.followUpDate)}</span>
                       </div>
                       <div className="up-row">
                         <span className="up-co">{lead.company || lead.email}</span>
-                        <span className="up-prio"
-                          style={{color:PRIORITY_CFG[lead.priority]?.color}}>
-                          {lead.priority}
-                        </span>
+                        <span className="up-prio" style={{color:PRIORITY_CFG[lead.priority]?.color}}>{lead.priority}</span>
                       </div>
                       <p className="up-note">{(lead.notes||"").slice(0,52)||"—"}</p>
                     </div>
@@ -804,138 +1027,101 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* RIGHT — calendar grid */}
           <div className="cal-right">
-            {/* Month nav */}
             <div className="cal-nav">
               <button className="cal-nav-btn" onClick={prevMonth}>‹</button>
-              <span className="cal-nav-label">
-                {MONTH_NAMES[activeYM.month]} {activeYM.year}
-              </span>
+              <span className="cal-nav-label">{MONTH_NAMES[activeYM.month]} {activeYM.year}</span>
               <button className="cal-nav-btn" onClick={nextMonth}>›</button>
             </div>
-
             <CalendarGrid
               year={activeYM.year}
               month={activeYM.month}
               leadsByDate={leadsByDate}
-              onDayClick={(date) => setModalDate(date)}
+              onDayClick={(date, dayLeads) => setDayOverlay({ date, leads: dayLeads })}
             />
           </div>
         </section>
 
-          {/* ════════════════════════════════════════
-            CHARTS
-        ════════════════════════════════════════ */}
         <section className="charts-row">
           <div className="chart-card">
             <p className="chart-title">Monthly Lead Trend</p>
             <TrendBarChart data={monthlyTrend} />
           </div>
-           <div className="chart-card">
+          <div className="chart-card">
             <p className="chart-title">Working Category Distribution</p>
             <DoughnutChart counts={workTypeDist} />
           </div>
         </section>
 
-
-        {/* ════════════════════════════════════════
-            LEAD TABLE SECTION
-        ════════════════════════════════════════ */}
         <section className="tbl-section">
-
           <div className="tbl-top">
             <div>
               <h2 className="tbl-title">Lead Pipeline</h2>
               <p className="tbl-sub">{filtered.length} lead{filtered.length!==1?"s":""}</p>
             </div>
             <div className="tbl-bulk">
+              <button className="btn-export" onClick={() => setExportOpen(true)}>
+                <FileSpreadsheet size={15} /> Export
+              </button>
               {selected.length>0 && (
                 <>
-                  <button className="btn-bulk-del" onClick={delBulk}>
-                    🗑 Delete ({selected.length})
-                  </button>
-                  <button className="btn-bulk-email">
-                    ✉ Email ({selected.length})
+                  <button className="btn-bulk-del" onClick={delBulk}>🗑 Delete ({selected.length})</button>
+                  <button className="btn-bulk-email" onClick={() => setBulkEmailOpen(true)}>
+                    <Mail size={14} /> Email ({selected.length})
                   </button>
                 </>
               )}
             </div>
           </div>
 
-          {/* Filters */}
           <div className="tbl-filters">
             <div className="srch-wrap">
               <span className="srch-ico">⌕</span>
-              <input className="srch-input" placeholder="Search name, email, company…"
-                value={search} onChange={(e)=>setSearch(e.target.value)} />
+              <input className="srch-input" placeholder="Search name, email, company…" value={search} onChange={(e)=>setSearch(e.target.value)} />
             </div>
             <div className="st-filters">
               {["all","hot","warm","cold"].map((s)=>(
-                <button key={s}
-                  className={`st-btn st-${s} ${stFilter===s?"active":""}`}
-                  onClick={()=>setStFilter(s)}>
+                <button key={s} className={`st-btn st-${s} ${stFilter===s?"active":""}`} onClick={()=>setStFilter(s)}>
                   {s==="all"?"All":STATUS_CFG[s].label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Table */}
           <div className="tbl-scroll">
             <table className="lead-tbl">
               <thead>
                 <tr>
                   <th><input type="checkbox" className="chk" checked={allCheck} onChange={toggleAll}/></th>
-                  <th>Name</th>
-                  <th>Company</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Follow-up</th>
-                  <th>Actions</th>
+                  <th>Name</th><th>Company</th><th>Email</th><th>Phone</th>
+                  <th>Status</th><th>Priority</th><th>Follow-up</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length===0 && (
-                  <tr><td colSpan={9} className="tbl-empty">
-                    No leads found — click any calendar date to add one.
-                  </td></tr>
+                  <tr><td colSpan={9} className="tbl-empty">No leads found — click any calendar date to view follow-ups.</td></tr>
                 )}
                 {filtered.map((lead) => {
                   const isFollowToday = lead.followUpDate === todayKey;
                   return (
-                    <tr key={lead.id}
-                      className={`tbl-row tbl-${lead.status} ${selected.includes(lead.id)?"tbl-sel":""}`}>
-                      <td><input type="checkbox" className="chk"
-                        checked={selected.includes(lead.id)} onChange={()=>toggleOne(lead.id)}/></td>
-                      <td className="td-name">{lead.name}</td>
+                    <tr key={lead.id} className={`tbl-row tbl-${lead.status} ${selected.includes(lead.id)?"tbl-sel":""}`}>
+                      <td><input type="checkbox" className="chk" checked={selected.includes(lead.id)} onChange={()=>toggleOne(lead.id)}/></td>
+                      <td className="td-name">{lead.firstName} {lead.lastName}</td>
                       <td className="td-co">{lead.company||"—"}</td>
                       <td className="td-email">{lead.email}</td>
                       <td className="td-phone">{lead.phone}</td>
-                      <td>
-                        <span className="status-pill"
-                          style={{color:STATUS_CFG[lead.status]?.color,background:STATUS_CFG[lead.status]?.bg}}>
-                          {STATUS_CFG[lead.status]?.label}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="status-pill"
-                          style={{color:PRIORITY_CFG[lead.priority]?.color,background:PRIORITY_CFG[lead.priority]?.bg}}>
-                          {lead.priority}
-                        </span>
-                      </td>
+                      <td><StatusPill status={lead.status} /></td>
+                      <td><PriorityPill priority={lead.priority} /></td>
                       <td>
                         <span className={`fu-date ${isFollowToday?"fu-today":""}`}>
-                          {fmtDate(lead.followUpDate)}
-                          {isFollowToday && <span className="fu-dot"/>}
+                          {fmtDate(lead.followUpDate)}{isFollowToday && <span className="fu-dot"/>}
                         </span>
                       </td>
                       <td>
                         <div className="act-row">
-                          <button className="act-btn act-v" onClick={()=>setViewLead(lead)} title="View">👁</button>
-                          <button className="act-btn act-e" onClick={()=>setEditLead(lead)}  title="Edit">✏</button>
+                          <button className="act-btn act-v" onClick={()=>setViewLead(lead)} title="View"><Eye size={15}/></button>
+                          <button className="act-btn act-e" onClick={()=>setEditLead(lead)}  title="Edit"><Pencil size={15}/></button>
+                          <button className="act-btn act-convert" onClick={()=>setConvertLead(lead)} title="Convert"><Handshake size={15}/></button>
                           <button className="act-btn act-d" onClick={()=>delOne(lead.id)}    title="Delete">🗑</button>
                         </div>
                       </td>
@@ -948,16 +1134,35 @@ const Dashboard = () => {
         </section>
       </div>
 
-      {/* ── MODALS ── */}
-      {(modalDate || editLead) && (
-        <LeadFormModal
-          date={modalDate || keyToDate(editLead?.followUpDate || toKey(today))}
-          lead={editLead}
-          onClose={() => { setModalDate(null); setEditLead(null); }}
-          onSave={handleSave}
+      {/* ── MODALS / OVERLAYS ── */}
+      {dayOverlay && (
+        <DayLeadsOverlay
+          date={dayOverlay.date}
+          leads={dayOverlay.leads}
+          onClose={() => setDayOverlay(null)}
+          onView={setViewLead}
+          onEdit={setEditLead}
+          onDone={setDoneLead}
+          onNextFollowup={setNextLead}
+          onHistory={setHistLead}
         />
       )}
-      {viewLead && <ViewModal lead={viewLead} onClose={()=>setViewLead(null)} />}
+      {editLead   && <LeadFormModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSave} />}
+      {viewLead   && <LeadDetailOverlay lead={viewLead} onClose={() => setViewLead(null)} />}
+      {doneLead   && <DoneOverlay lead={doneLead} onClose={() => setDoneLead(null)} onSubmit={handleDoneSubmit} />}
+      {nextLead   && <NextFollowupOverlay lead={nextLead} onClose={() => setNextLead(null)} onSubmit={handleNextFollowupSubmit} />}
+      {histLead   && <HistoryOverlay lead={histLead} onClose={() => setHistLead(null)} />}
+      {convertLead&& <ConvertOverlay lead={convertLead} onClose={() => setConvertLead(null)} onConfirm={handleConvertConfirm} />}
+      {deleteTarget && (
+        <DeleteConfirmOverlay
+          label={deleteTarget.type === "one" ? "Delete this lead?" : `Delete ${selected.length} leads?`}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
+      {celebrate  && <CelebrationOverlay name={celebrate} />}
+      {bulkEmailOpen && <BulkEmailOverlay count={selected.length} onClose={() => setBulkEmailOpen(false)} onSend={handleBulkSend} />}
+      {exportOpen && <ExportOverlay statusFilter={stFilter} onClose={() => setExportOpen(false)} onExport={handleExport} />}
     </div>
   );
 };

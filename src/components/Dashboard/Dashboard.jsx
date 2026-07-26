@@ -385,10 +385,10 @@ const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextF
       <div className="tbl-scroll">
         <table className="lead-tbl day-ov-tbl">
           <thead>
-            <tr>
+            <tr className="sticky top-0">
               <th>First Name</th><th>Last Name</th><th>Mobile</th><th>Company</th>
               <th>Requirement</th><th>Priority</th><th>Follow-up Date</th><th>Note</th>
-              <th>Status</th><th>Actions</th>
+              <th>Status</th><th className="action-th" >Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -403,7 +403,7 @@ const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextF
                 <td>{fmtDate(l.followUpDate)}</td>
                 <td className="td-note">{(l.notes || "—").slice(0, 40)}</td>
                 <td><FollowupStatusPill status={l.followupStatus} /></td>
-                <td>
+                <td className="action-th ">
                   <div className="act-row">
                     <button className="act-btn act-v" title="View" onClick={() => onView(l)}><Eye size={15} /></button>
                     <button className="act-btn act-e" title="Edit" onClick={() => onEdit(l)}><Pencil size={15} /></button>

@@ -6,6 +6,67 @@ const CLIENTS = [
   { id: 2, firstName: "Karthik", lastName: "Iyer", contact: "+91 91234 56780", email: "karthik@autoserv.com", service: "Static Website", project: "AutoServ Logistics", totalAmount: 25000, advanceAmount: 25000, remainAmount: 0, pendingAmount: 5000, source: "Instagram", type: "static" },
   { id: 3, firstName: "Neha", lastName: "Shah", contact: "+91 99887 76655", email: "neha@finedge.in", service: "E-commerce", project: "FinEdge Capital", totalAmount: 140000, advanceAmount: 90000, remainAmount: 50000, pendingAmount: 25000,source: "Website", type: "dynamic" },
   { id: 4, firstName: "Rohan", lastName: "Verma", contact: "+91 90909 12121", email: "rohan@brightleaf.co", service: "Static Website", project: "Brightleaf Interiors", totalAmount: 18000, advanceAmount: 18000, remainAmount: 0, pendingAmount: 5000, source: "Google Ads", type: "static" },
+  { 
+  id: 5, 
+  firstName: "Priya", 
+  lastName: "Sharma", 
+  contact: "+91 98765 43210", 
+  email: "priya@ecotech.in", 
+  service: "Dynamic Website", 
+  project: "EcoTech Solutions", 
+  totalAmount: 25000, 
+  advanceAmount: 15000, 
+  remainAmount: 10000, 
+  pendingAmount: 2000, 
+  source: "Referral", 
+  type: "dynamic" 
+}
+,
+{ 
+  id: 6, 
+  firstName: "Amit", 
+  lastName: "Patel", 
+  contact: "+91 87654 32109", 
+  email: "amit@spicekart.com", 
+  service: "E-commerce", 
+  project: "SpiceKart Grocery", 
+  totalAmount: 45000, 
+  advanceAmount: 30000, 
+  remainAmount: 15000, 
+  pendingAmount: 5000, 
+  source: "Facebook", 
+  type: "ecommerce" 
+},
+{ 
+  id: 7, 
+  firstName: "Sneha", 
+  lastName: "Reddy", 
+  contact: "+91 76543 21098", 
+  email: "sneha@greenleaf.co", 
+  service: "SEO Service", 
+  project: "GreenLeaf Organics", 
+  totalAmount: 12000, 
+  advanceAmount: 6000, 
+  remainAmount: 6000, 
+  pendingAmount: 0, 
+  source: "Direct", 
+  type: "seo" 
+},
+{ 
+  id: 8, 
+  firstName: "Vikram", 
+  lastName: "Singh", 
+  contact: "+91 65432 10987", 
+  email: "vikram@brickbeam.com", 
+  service: "Static Website", 
+  project: "Brick & Beam Constructions", 
+  totalAmount: 18000, 
+  advanceAmount: 18000, 
+  remainAmount: 0, 
+  pendingAmount: 3000, 
+  source: "Google Ads", 
+  type: "static" 
+}
 ];
 
 const currency = (n) =>
@@ -214,7 +275,7 @@ const ClientList = () => {
         <div className="cl-table-scroll">
           <table className="cl-table">
             <thead>
-              <tr>
+              <tr className="tr-table">
                 <th>First name</th><th>Last name</th><th>Contact</th><th>Email</th>
                 <th>Service</th><th>Project</th><th>totalAmount</th><th>Advance (60%)</th>
                 <th>Pending pay</th><th>Source</th><th className="cl-col-sticky">Action</th>

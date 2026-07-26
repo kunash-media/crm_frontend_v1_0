@@ -58,7 +58,7 @@
   overflow: hidden;
 }
 
-.client-root .cl-table-scroll { overflow-x: auto; }
+.client-root .cl-table-scroll { overflow: auto; height: 340px;}
 
 .client-root .cl-table {
   width: 100%;
@@ -98,6 +98,15 @@
   background: var(--bg-card, #faf5f5);
   box-shadow: -6px 0 8px -6px rgba(0,0,0,0.06);
 }
+
+.tr-table{
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(255,255,255,0.9);
+  box-shadow: -6px 0 8px -6px rgba(0,0,0,0.06);
+}
+
 .client-root .cl-table thead .cl-col-sticky { background: #fdf1e7; }
 
 .client-root .cl-action-btns { display: flex; align-items: center; gap: 6px; }

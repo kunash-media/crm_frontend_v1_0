@@ -613,9 +613,17 @@ input, select, textarea { font-family: var(--ff-body); }
 /* Table */
 .tbl-scroll {
   overflow: auto;
-  height: 450px;
+  max-height: 330px;
   border-radius: var(--r-md);
   border: 1px solid #f49c79d2;
+}
+
+.action-th{
+  position: sticky;
+  right: 0;
+  background: rgba(251, 240, 240, 0.765);
+  color: var(--tx-mute);
+  box-shadow: -6px 0 8px -6px rgba(0,0,0,0.06);
 }
 /* .tbl-scroll::-webkit-scrollbar { height: 4px; } */
 .tbl-scroll::-webkit-scrollbar-thumb { background:var(--o200); border-radius:4px; }
@@ -645,7 +653,7 @@ input, select, textarea { font-family: var(--ff-body); }
 .lead-tbl td {
   padding: 10px 13px;
   color: var(--tx-hi);
-  border-bottom: 1px solid rgba(249,115,22,.055);
+  border-bottom: 1px solid rgba(235, 102, 6, 0.285);
   vertical-align: middle;
 }
 .tbl-row { transition: background .16s; }
@@ -935,7 +943,7 @@ input, select, textarea { font-family: var(--ff-body); }
 .hist-empty p { margin: 0; font-size: 13.5px; font-weight: 500; }
 
 .hist-list { display: flex; flex-direction: column; gap: 12px; }
-.hist-item { display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; background: rgba(234,88,12,0.045); }
+.hist-item { display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; background: rgba(234,88,12,0.045); border:1px solid rgb(246, 197, 197) }
 .hist-icon {
   width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
@@ -944,7 +952,7 @@ input, select, textarea { font-family: var(--ff-body); }
 .hist-next-followup .hist-icon { background: rgba(234,88,12,0.16); color: #ea580c; }
 .hist-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
 .hist-date { font-size: 12.5px; font-weight: 700; color: #4a2c17; }
-.hist-tag { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #b07850; }
+.hist-tag { font-size: 10.5px; border:2px solid green; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #93572c; padding: 0px 6px; border:1px solid rgb(251, 133, 133); border-radius: 6px; background-color: rgba(253, 206, 206, 0.929); }
 .hist-note { margin: 0; font-size: 13px; color: #6b4a30; line-height: 1.45; }
 
 /* ── Split view sections ── */

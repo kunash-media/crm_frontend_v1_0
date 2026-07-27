@@ -1,6 +1,10 @@
 import "../Lead-Form/AddLead.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef} from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
+const API_BASE = "http://localhost:9090/api/lead/v1"; // adjust if your backend runs on a different origin, e.g. http://localhost:8080/api/lead/v1
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -46,6 +50,7 @@ const EMPTY_LEAD = {
   status: "warm",
   priority: "P2",
   followUpDate: "",
+  followupStatus: "pending",
   notes: "",
   source: "Website",
   requirementCategory: REQUIREMENT_CATEGORIES[0],
@@ -57,7 +62,9 @@ const AddLead = () => {
   const [form, setForm] = useState(EMPTY_LEAD);
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
-  const [phoneCheck, setPhoneCheck] = useState({ checking: false, exists: false, checkedFor: "" });
+
+  const [attachments, setAttachments] = useState([]);
+  const [phoneCheck, setPhoneCheck] = useState({ checking: false, exists: false, checkedFor: "", existingLead: null });
 
   // Auto-set follow-up date to tomorrow by default
   useEffect(() => {
@@ -67,25 +74,94 @@ const AddLead = () => {
     setForm(prev => ({ ...prev, followUpDate: defaultDate }));
   }, []);
 
+ const phoneCheckTimer = useRef(null);
+   const phoneCheckSeq = useRef(0);
+
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name } = e.target;
+    let { value } = e.target;
+
+    if (name === "phone") {
+      value = value.replace(/\D/g, "").slice(0, 10);
+    }
+
     setForm(prev => ({ ...prev, [name]: value }));
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: "" }));
-    if (name === "phone" && phoneCheck.checkedFor && value !== phoneCheck.checkedFor) {
-      setPhoneCheck({ checking: false, exists: false, checkedFor: "" });
+
+    if (name === "phone") {
+      if (phoneCheck.checkedFor && value !== phoneCheck.checkedFor) {
+        setPhoneCheck({ checking: false, exists: false, checkedFor: "", existingLead: null });
+      }
+
+      if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+
+      if (value.length === 10) {
+        phoneCheckTimer.current = setTimeout(() => {
+          checkPhoneExists(value);
+        }, 300); // debounce so we don't fire on every keystroke
+      }
     }
   };
 
-  // TODO: replace this localStorage lookup with your real duplicate-check API call
-  const checkPhoneExists = async (phone) => {
-    if (!phone.trim() || phone.trim().length < 10) return;
+  useEffect(() => {
+    return () => {
+      if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+    };
+  }, []);
+
+   const checkPhoneExists = async (phone) => {
+    const trimmed = phone.trim();
+    if (trimmed.length < 10) return;
+
+    // monotonic guard — only the most recently fired request is allowed to update state
+    const seq = ++phoneCheckSeq.current;
+
     setPhoneCheck(prev => ({ ...prev, checking: true }));
-    const existing = JSON.parse(localStorage.getItem("crm_leads_v2") || "[]");
-    const found = existing.some(l => (l.phone || "").replace(/\D/g, "") === phone.replace(/\D/g, ""));
-    setPhoneCheck({ checking: false, exists: found, checkedFor: phone });
-    if (found) {
-      setErrors(prev => ({ ...prev, phone: "This phone number already exists" }));
+    try {
+      const res = await fetch(`${API_BASE}/check-phone?phone=${encodeURIComponent(trimmed)}`);
+      if (seq !== phoneCheckSeq.current) return; // a newer request superseded this one — ignore stale response
+
+      if (res.status === 204) {
+        setPhoneCheck({ checking: false, exists: false, checkedFor: trimmed, existingLead: null });
+        return;
+      }
+      if (res.ok) {
+        const existingLead = await res.json();
+        if (seq !== phoneCheckSeq.current) return;
+        setPhoneCheck({ checking: false, exists: true, checkedFor: trimmed, existingLead });
+        setErrors(prev => ({ ...prev, phone: `Already exists — ${existingLead.firstName} ${existingLead.lastName} (${existingLead.leadStrId})` }));
+        return;
+      }
+      setPhoneCheck(prev => ({ ...prev, checking: false }));
+    } catch (err) {
+      if (seq !== phoneCheckSeq.current) return;
+      console.error("Phone check failed:", err);
+      setPhoneCheck(prev => ({ ...prev, checking: false }));
     }
+  };
+
+  const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp";
+  const MAX_FILE_SIZE_MB = 10;
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    const valid = [];
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, attachments: `${file.name} exceeds ${MAX_FILE_SIZE_MB}MB limit` }));
+        continue;
+      }
+      valid.push(file);
+    }
+    if (valid.length) {
+      setAttachments(prev => [...prev, ...valid]);
+      setErrors(prev => ({ ...prev, attachments: "" }));
+    }
+    e.target.value = "";
+  };
+
+  const removeAttachment = (idx) => {
+    setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
   const validate = () => {
@@ -93,8 +169,14 @@ const AddLead = () => {
     if (!form.firstName.trim()) err.firstName = "First name is required";
     if (!form.lastName.trim()) err.lastName = "Last name is required";
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) err.email = "Valid email is required";
-    if (!form.phone.trim()) err.phone = "Phone number is required";
-    if (phoneCheck.exists && phoneCheck.checkedFor === form.phone) err.phone = "This phone number already exists";
+    
+   if (!form.phone.trim()) {
+      err.phone = "Phone number is required";
+    } else if (!/^[6-9]\d{9}$/.test(form.phone)) {
+      err.phone = "Enter a valid 10-digit mobile number";
+    } else if (phoneCheck.exists && phoneCheck.checkedFor === form.phone) {
+      err.phone = `Already exists — ${phoneCheck.existingLead?.firstName} ${phoneCheck.existingLead?.lastName}`;
+    }
     if (!form.followUpDate) err.followUpDate = "Follow-up date is required";
 
     setErrors(err);
@@ -102,27 +184,66 @@ const AddLead = () => {
   };
 
   const handleSave = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      toast.error("Please fix the highlighted fields");
+      return;
+    }
 
     setIsSaving(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      // Get existing leads and add new one
-      const existing = JSON.parse(localStorage.getItem("crm_leads_v2") || "[]");
-
-      const newLead = {
-        ...form,
-        id: `lead_${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        badgeGrad: `linear-gradient(135deg,#f97316,#ea580c)`, // default gradient
+    try {
+      const leadPayload = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        company: form.company,
+        status: form.status,
+        priority: form.priority,
+        source: form.source,
+        requirementCategory: form.requirementCategory,
+        tags: form.tags,
+        followUpDate: form.followUpDate,
+        followupStatus: form.followupStatus,
+        notes: form.notes,
+        leadConverted: false,
       };
 
-      localStorage.setItem("crm_leads_v2", JSON.stringify([newLead, ...existing]));
+      const formData = new FormData();
+      formData.append(
+        "lead",
+        new Blob([JSON.stringify(leadPayload)], { type: "application/json" })
+      );
 
-      alert("✅ Lead created successfully!");
+      // backend currently accepts a single docFile part — sending the first attachment only
+      if (attachments.length > 0) {
+        formData.append("docFile", attachments[0]);
+      }
+
+      const response = await fetch(`${API_BASE}`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.status === 409) {
+        const errBody = await response.json().catch(() => null);
+        throw new Error(errBody?.message || "A lead with this phone/email already exists");
+      }
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(errText || `Request failed with status ${response.status}`);
+      }
+
+      const created = await response.json();
+
+      toast.success(`Lead ${created.firstName} ${created.lastName} created successfully!`);
       navigate("/dashboard");
-    }, 800);
+    } catch (err) {
+      console.error("Failed to create lead:", err);
+      toast.error(err.message || "Failed to create lead. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -134,7 +255,7 @@ const AddLead = () => {
         </div>
 
         <div className="header-actions">
-          <button className="btn-cancel" onClick={() => navigate("/dashboard")}>
+          <button className="btn-cancel" onClick={() => navigate("/dashboard")} disabled={isSaving}>
             Cancel
           </button>
           <button
@@ -142,7 +263,14 @@ const AddLead = () => {
             onClick={handleSave}
             disabled={isSaving}
           >
-            {isSaving ? "Saving Lead..." : "Save Lead"}
+            {isSaving ? (
+              <span className="btn-loading">
+                <span className="btn-spinner" />
+                Saving Lead...
+              </span>
+            ) : (
+              "Save Lead"
+            )}
           </button>
         </div>
       </div>
@@ -165,6 +293,7 @@ const AddLead = () => {
                   onChange={handleChange}
                   placeholder="Arjun"
                   className={errors.firstName ? "error" : ""}
+                  disabled={isSaving}
                 />
                 {errors.firstName && <span className="error-msg">{errors.firstName}</span>}
               </div>
@@ -178,6 +307,7 @@ const AddLead = () => {
                   onChange={handleChange}
                   placeholder="Mehta"
                   className={errors.lastName ? "error" : ""}
+                  disabled={isSaving}
                 />
                 {errors.lastName && <span className="error-msg">{errors.lastName}</span>}
               </div>
@@ -191,6 +321,7 @@ const AddLead = () => {
                   onChange={handleChange}
                   placeholder="arjun@techwave.io"
                   className={errors.email ? "error" : ""}
+                  disabled={isSaving}
                 />
                 {errors.email && <span className="error-msg">{errors.email}</span>}
               </div>
@@ -202,9 +333,15 @@ const AddLead = () => {
                   name="phone"
                   value={form.phone}
                   onChange={handleChange}
-                  onBlur={(e) => checkPhoneExists(e.target.value)}
-                  placeholder="+91 98201 33410"
+                   onBlur={(e) => {
+                    if (phoneCheckTimer.current) clearTimeout(phoneCheckTimer.current);
+                    checkPhoneExists(e.target.value);
+                  }}
+                  placeholder="9820133410"
+                  maxLength={10}
+                  inputMode="numeric"
                   className={errors.phone ? "error" : ""}
+                  disabled={isSaving}
                 />
                 {phoneCheck.checking && <span className="hint-msg">Checking...</span>}
                 {errors.phone && <span className="error-msg">{errors.phone}</span>}
@@ -218,6 +355,7 @@ const AddLead = () => {
                   value={form.company}
                   onChange={handleChange}
                   placeholder="TechWave Solutions"
+                  disabled={isSaving}
                 />
               </div>
             </div>
@@ -240,6 +378,7 @@ const AddLead = () => {
                         border: form.status === s ? `1px solid ${STATUS_CFG[s].color}` : "",
                       }}
                       onClick={() => setForm(prev => ({ ...prev, status: s }))}
+                      disabled={isSaving}
                     >
                       {STATUS_CFG[s].label}
                     </button>
@@ -256,6 +395,7 @@ const AddLead = () => {
                       type="button"
                       className={`prio-btn prio-${p.toLowerCase()} ${form.priority === p ? "active" : ""}`}
                       onClick={() => setForm(prev => ({ ...prev, priority: p }))}
+                      disabled={isSaving}
                     >
                       {p} — {PRIORITY_CFG[p].label}
                     </button>
@@ -265,7 +405,7 @@ const AddLead = () => {
 
               <div className="fg">
                 <label>Source</label>
-                <select name="source" value={form.source} onChange={handleChange}>
+                <select name="source" value={form.source} onChange={handleChange} disabled={isSaving}>
                   {LEAD_SOURCES.map(src => (
                     <option key={src} value={src}>{src}</option>
                   ))}
@@ -274,7 +414,7 @@ const AddLead = () => {
 
               <div className="fg">
                 <label>Requirement Category</label>
-                <select name="requirementCategory" value={form.requirementCategory} onChange={handleChange}>
+                <select name="requirementCategory" value={form.requirementCategory} onChange={handleChange} disabled={isSaving}>
                   {REQUIREMENT_CATEGORIES.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
@@ -289,6 +429,7 @@ const AddLead = () => {
                   value={form.followUpDate}
                   onChange={handleChange}
                   className={errors.followUpDate ? "error" : ""}
+                  disabled={isSaving}
                 />
                 {errors.followUpDate && <span className="error-msg">{errors.followUpDate}</span>}
               </div>
@@ -306,10 +447,11 @@ const AddLead = () => {
                   value={form.tags}
                   onChange={handleChange}
                   placeholder="enterprise, q3, demo"
+                  disabled={isSaving}
                 />
               </div>
 
-              <div className="fg full">
+             <div className="fg full">
                 <label>Notes / Context</label>
                 <textarea
                   name="notes"
@@ -317,7 +459,44 @@ const AddLead = () => {
                   value={form.notes}
                   onChange={handleChange}
                   placeholder="Requested enterprise demo. Very interested in Q3 rollout..."
+                  disabled={isSaving}
                 />
+              </div>
+
+              <div className="fg full">
+               <label className="file-drop" htmlFor="lead-attachments">
+                  <span className="file-drop-icon">📎 Upload file</span>
+                  <span className="file-drop-hint">PDF, DOC, DOCX, JPG, PNG — up to {MAX_FILE_SIZE_MB}MB each</span>
+                </label>
+                <input
+                  id="lead-attachments"
+                  type="file"
+                  multiple
+                  accept={ACCEPTED_FILE_TYPES}
+                  onChange={handleFileSelect}
+                  className="file-input-hidden"
+                  disabled={isSaving}
+                />
+                {errors.attachments && <span className="error-msg">{errors.attachments}</span>}
+
+                {attachments.length > 0 && (
+                  <div className="file-list">
+                    {attachments.map((file, idx) => (
+                      <div className="file-chip" key={`${file.name}-${idx}`}>
+                        <span className="file-chip-name">{file.name}</span>
+                        <span className="file-chip-size">{(file.size / 1024).toFixed(0)} KB</span>
+                        <button
+                          type="button"
+                          className="file-chip-remove"
+                          onClick={() => removeAttachment(idx)}
+                          disabled={isSaving}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -329,7 +508,6 @@ const AddLead = () => {
             <h4 className="preview-title ">Live Preview</h4>
 
             <div className="preview-content">
-              {/* <div className="preview-name">{form.firstName} {form.lastName}</div> */}
               <div className="preview-company">{form.company || "Company Name"}</div>
 
               <div className="preview-meta">

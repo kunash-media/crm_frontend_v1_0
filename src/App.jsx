@@ -1,4 +1,6 @@
 import "./components/Asidebar-Navbar/layout.css";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { Routes, Route, Navigate } from "react-router-dom";
 import AsideBar from "./components/Asidebar-Navbar/AsideBar.jsx";
 import NavBar   from "./components/Asidebar-Navbar/NavBar.jsx";
@@ -50,44 +52,22 @@ const AppLayout = ({ children }) => (
 
 function App() {
   return (
+  <>
+    <ToastContainer position="top-right" autoClose={3000} />
     <Routes>
-      {/* Redirect root to dashboard */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-      {/* ── All pages share the same AppLayout shell ── */}
-      <Route path="/dashboard" element={
-        <AppLayout><Dashboard /></AppLayout>
-      } />
+      <Route path="/dashboard" element={<AppLayout><Dashboard /></AppLayout>} />
+      <Route path="/leads/add" element={<AppLayout><AddLead /></AppLayout>} />
+      <Route path="/clients" element={<AppLayout><ClientList /></AppLayout>} />
+      <Route path="/invoices" element={<AppLayout><Invoice /></AppLayout>} />
+      <Route path="/reports" element={<AppLayout><ComingSoon title="Reports" /></AppLayout>} />
+      <Route path="/settings" element={<AppLayout><ComingSoon title="Settings" /></AppLayout>} />
+      <Route path="/w-formatter" element={<AppLayout><WFormatter title="W-formatter" /></AppLayout>} />
 
-      <Route path="/leads/add" element={
-        <AppLayout><AddLead /></AppLayout>
-      } />
-
-      <Route path="/clients" element={
-        <AppLayout><ClientList /></AppLayout>
-      } />
-
-      <Route path="/invoices" element={
-        <AppLayout><Invoice/></AppLayout>
-      } />
-
-      <Route path="/reports" element={
-        <AppLayout><ComingSoon title="Reports" /></AppLayout>
-      } />
-
-      <Route path="/settings" element={
-        <AppLayout><ComingSoon title="Settings" /></AppLayout>
-      } />
-
-       <Route path="/w-formatter" element={
-        <AppLayout><WFormatter title="W-formatter" /></AppLayout>
-      } />
-
-      {/* 404 fallback */}
-      <Route path="*" element={
-        <AppLayout><ComingSoon title="Page Not Found" /></AppLayout>
-      } />
+      <Route path="*" element={<AppLayout><ComingSoon title="Page Not Found" /></AppLayout>} />
     </Routes>
+  </>
   );
 }
 

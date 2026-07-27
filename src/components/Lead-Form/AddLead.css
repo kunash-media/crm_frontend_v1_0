@@ -7,6 +7,26 @@
   max-width: 1180px;
   margin: 0 auto;
   padding: 20px 28px;
+  overflow: none;
+}
+
+.btn-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
 }
 
 .add-lead-header {
@@ -255,4 +275,40 @@
   .add-lead-preview {
     position: static;
   }
+}
+
+.file-input-hidden { display: none; }
+
+.file-drop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1.5px dashed rgba(234,88,12,0.3);
+  border-radius: 12px;
+  padding: 14px 18px;
+  cursor: pointer;
+  background: rgba(234,88,12,0.03);
+  transition: all 0.15s;
+}
+.file-drop:hover {
+  border-color: #ea580c;
+  background: rgba(234,88,12,0.07);
+}
+.file-drop:active { transform: scale(0.99); }
+
+.file-drop-icon {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ea580c;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-drop-hint {
+  font-size: 11.5px;
+  color: #b08060;
+  text-align: right;
 }

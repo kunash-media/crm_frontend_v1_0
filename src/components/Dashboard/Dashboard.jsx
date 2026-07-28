@@ -1,7 +1,7 @@
 import "../Dashboard/Dashboard.css";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import confetti from "canvas-confetti";
 import * as XLSX from "xlsx";
 import {
@@ -11,8 +11,12 @@ import {
 import {
   Users, CalendarClock, Mail, Repeat, CheckCircle2, XCircle,
   Eye, Pencil, History, CalendarPlus, Handshake, FileSpreadsheet,
-  X, Clock3, MessageSquareText, BellRing, CalendarCheck2, Inbox,
+  X, MessageSquareText, BellRing, CalendarCheck2, Inbox,
+  FileText, FileX2, Loader2, MessageCircle, Send,
 } from "lucide-react";
+
+const API_BASE = "http://localhost:9090/api/lead/v1";
+const FILE_ORIGIN = "http://localhost:9090";
 
 /* ─────────────────────────────────────────────────────────────
    CONSTANTS & HELPERS
@@ -48,8 +52,7 @@ const REQUIREMENT_CATEGORIES = [
   "Custom Development","Other",
 ];
 
-/* Deterministic hash → dark HSL color. Same key ALWAYS produces the same
-   color — no DB, no localStorage, no cache to manage. */
+/* Deterministic hash → dark HSL color (dummy chart use) */
 const colorForKey = (key) => {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
@@ -69,7 +72,11 @@ const BADGE_GRADIENTS = [
   "linear-gradient(135deg,#84cc16,#65a30d)",
   "linear-gradient(135deg,#06b6d4,#0891b2)",
 ];
-const randomGrad = () => BADGE_GRADIENTS[Math.floor(Math.random() * BADGE_GRADIENTS.length)];
+const gradForKey = (key = "") => {
+  let hash = 0;
+  for (let i = 0; i < String(key).length; i++) hash = String(key).charCodeAt(i) + ((hash << 5) - hash);
+  return BADGE_GRADIENTS[Math.abs(hash) % BADGE_GRADIENTS.length];
+};
 
 const pad   = (n) => String(n).padStart(2,"0");
 const toKey = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -80,12 +87,123 @@ const fmtDate = (v) => {
   const d = typeof v==="string" ? keyToDate(v) : v;
   return d.toLocaleDateString("en-IN",{ day:"2-digit", month:"short", year:"numeric" });
 };
+const fmtDateTime = (v) => {
+  if (!v) return "—";
+  const d = new Date(v);
+  return d.toLocaleString("en-IN",{ day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" });
+};
 
-const splitName = (l) => ({
-  firstName: l.firstName || (l.name || "").split(" ")[0] || "",
-  lastName:  l.lastName  || (l.name || "").split(" ").slice(1).join(" ") || "",
-});
+const today = new Date();
+const rel = (offset) => {
+  const d = new Date(today);
+  d.setDate(d.getDate() + offset);
+  return toKey(d);
+};
 
+const EMPTY_FORM = {
+  firstName:"", lastName:"", email:"", phone:"", company:"",
+  status:"warm", priority:"P2", notes:"", followUpDate:"", followupStatus:"pending",
+  requirementCategory: REQUIREMENT_CATEGORIES[0], source:"Website", tags:"",
+};
+
+const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp";
+const MAX_FILE_SIZE_MB = 10;
+
+/* ─────────────────────────────────────────────────────────────
+   DUMMY DATA — used ONLY for the stat cards + charts (kept as-is for now)
+───────────────────────────────────────────────────────────── */
+const DUMMY_LEADS = [
+  {
+    id:"d1", firstName:"Arjun", lastName:"Mehta", email:"arjun@techwave.io",
+    phone:"+91 98201 33410", company:"TechWave Solutions",
+    status:"hot", priority:"P1", requirementCategory:"Software Development",
+    followUpDate: rel(0), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-5).toISOString(),
+    workType:"meta_ads", emailSent:true, outcome:null,
+  },
+  {
+    id:"d6", firstName:"Ananya", lastName:"Joshi", email:"ananya@healthplus.in",
+    phone:"+91 91234 56789", company:"HealthPlus Clinics",
+    status:"cold", priority:"P3", requirementCategory:"Dynamic Website",
+    followUpDate: rel(-3), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-15).toISOString(),
+    workType:"static", emailSent:false, outcome:"lost",
+  },
+  {
+    id:"d2", firstName:"Priya", lastName:"Sharma", email:"priya@finedge.com",
+    phone:"+91 99112 87654", company:"FinEdge Capital",
+    status:"warm", priority:"P2", requirementCategory:"CRM",
+    followUpDate: rel(2), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-3).toISOString(),
+    workType:"static", emailSent:true, outcome:null,
+  },
+  {
+    id:"d3", firstName:"Rahul", lastName:"Nair", email:"rahul.nair@cloudops.in",
+    phone:"+91 90000 12345", company:"CloudOps India",
+    status:"cold", priority:"P3", requirementCategory:"Google Ads",
+    followUpDate: rel(5), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-10).toISOString(),
+    workType:"campaign", emailSent:false, outcome:"lost",
+  },
+  {
+    id:"d4", firstName:"Sneha", lastName:"Kulkarni", email:"sneha@growthlab.co",
+    phone:"+91 87654 32100", company:"GrowthLab Agency",
+    status:"hot", priority:"P1", requirementCategory:"Landing Page",
+    followUpDate: rel(1), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-2).toISOString(),
+    workType:"dynamic", emailSent:true, outcome:"won",
+  },
+  {
+    id:"d5", firstName:"Vikram", lastName:"Desai", email:"vikram@nexaretail.com",
+    phone:"+91 80000 99887", company:"Nexa Retail",
+    status:"warm", priority:"P2", requirementCategory:"Meta Ads",
+    followUpDate: rel(7), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-7).toISOString(),
+    workType:"meta_ads", emailSent:true, outcome:null,
+  },
+  {
+    id:"d7", firstName:"Karthik", lastName:"Iyer", email:"karthik@autoserv.io",
+    phone:"+91 77889 11223", company:"AutoServ Logistics",
+    status:"hot", priority:"P2", requirementCategory:"Software Development",
+    followUpDate: rel(0), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-1).toISOString(),
+    workType:"campaign", emailSent:true, outcome:"won",
+  },
+  {
+    id:"d8", firstName:"Meera", lastName:"Pillai", email:"meera@urbanstyle.in",
+    phone:"+91 90123 44556", company:"UrbanStyle Fashion",
+    status:"warm", priority:"P2", requirementCategory:"SEO",
+    followUpDate: rel(4), followupStatus:"pending",
+    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-4).toISOString(),
+    workType:"static", emailSent:true, outcome:null,
+  },
+];
+
+/* WhatsApp standard follow-up template — swap this later with the real/approved copy */
+/* WhatsApp templates — swap these later with the real/approved copies */
+const WA_TEMPLATES = {
+  followup: {
+    label: "Follow-up",
+    build: (lead) =>
+      `Hi ${lead.firstName || "there"}, this is a quick follow-up regarding your requirement for *${lead.requirementCategory || "our services"}*. ` +
+      `We'd love to help you move forward — let us know a good time to connect.\n\n` +
+      `Best regards,\nTeam Kunash 🙂`,
+  },
+  meeting_reminder: {
+    label: "Meeting Reminder",
+    build: (lead) =>
+      `Hi ${lead.firstName || "there"}, just a friendly reminder about our upcoming meeting regarding *${lead.requirementCategory || "your requirement"}*. ` +
+      `Please let us know if the scheduled time still works for you.\n\n` +
+      `Best regards,\nTeam Kunash 🙂`,
+  },
+  payment_reminder: {
+    label: "Payment Reminder",
+    build: (lead) =>
+      `Hi ${lead.firstName || "there"}, this is a gentle reminder regarding the pending payment for *${lead.requirementCategory || "your project"}*. ` +
+      `Kindly complete the remaining payment at your earliest convenience so we can continue without delays.\n\n` +
+      `Best regards,\nTeam Kunash 🙂`,
+  },
+};
 /* build 42-cell calendar grid */
 const buildGrid = (year, month) => {
   const firstDow    = new Date(year, month, 1).getDay();
@@ -103,110 +221,29 @@ const buildGrid = (year, month) => {
 };
 
 /* ─────────────────────────────────────────────────────────────
-   DUMMY SEED DATA  (relative to today so calendar always shows)
+   API HELPERS
 ───────────────────────────────────────────────────────────── */
-const today = new Date();
-const rel = (offset) => {
-  const d = new Date(today);
-  d.setDate(d.getDate() + offset);
-  return toKey(d);
-};
+async function apiGet(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error(`GET ${path} failed (${res.status})`);
+  return res.json();
+}
 
-const DUMMY_LEADS = [
-  {
-    id:"d1", firstName:"Arjun", lastName:"Mehta", email:"arjun@techwave.io",
-    phone:"+91 98201 33410", company:"TechWave Solutions",
-    status:"hot", priority:"P1", notes:"Requested enterprise demo. Very interested in Q3 rollout.",
-    requirementCategory:"Software Development",
-    followUpDate: rel(0), followupStatus:"pending",
-    history: [
-      { date: rel(-6), note:"Initial discovery call done. Sending proposal next.", action:"done", at: new Date(today.getFullYear(),today.getMonth(),today.getDate()-6).toISOString() },
-    ],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-5).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[0],
-    workType:"meta_ads", emailSent:true, outcome:null,
-  },
-  {
-    id:"d6", firstName:"Ananya", lastName:"Joshi", email:"ananya@healthplus.in",
-    phone:"+91 91234 56789", company:"HealthPlus Clinics",
-    status:"cold", priority:"P3", notes:"Interested in 6-month pilot. Budget approval pending.",
-    requirementCategory:"Dynamic Website",
-    followUpDate: rel(-3), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-15).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[5],
-    workType:"static", emailSent:false, outcome:"lost",
-  },
-  {
-    id:"d2", firstName:"Priya", lastName:"Sharma", email:"priya@finedge.com",
-    phone:"+91 99112 87654", company:"FinEdge Capital",
-    status:"warm", priority:"P2", notes:"Comparing us with Salesforce. Send ROI doc.",
-    requirementCategory:"CRM",
-    followUpDate: rel(2), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-3).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[1],
-    workType:"static", emailSent:true, outcome:null,
-  },
-  {
-    id:"d3", firstName:"Rahul", lastName:"Nair", email:"rahul.nair@cloudops.in",
-    phone:"+91 90000 12345", company:"CloudOps India",
-    status:"cold", priority:"P3", notes:"Low budget this quarter. Revisit in Q4.",
-    requirementCategory:"Google Ads",
-    followUpDate: rel(5), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-10).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[2],
-    workType:"campaign", emailSent:false, outcome:"lost",
-  },
-  {
-    id:"d4", firstName:"Sneha", lastName:"Kulkarni", email:"sneha@growthlab.co",
-    phone:"+91 87654 32100", company:"GrowthLab Agency",
-    status:"hot", priority:"P1", notes:"Ready to sign. Needs legal review first.",
-    requirementCategory:"Landing Page",
-    followUpDate: rel(1), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-2).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[3],
-    workType:"dynamic", emailSent:true, outcome:"won",
-  },
-  {
-    id:"d5", firstName:"Vikram", lastName:"Desai", email:"vikram@nexaretail.com",
-    phone:"+91 80000 99887", company:"Nexa Retail",
-    status:"warm", priority:"P2", notes:"Attended webinar. Sent proposal, awaiting response.",
-    requirementCategory:"Meta Ads",
-    followUpDate: rel(7), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-7).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[4],
-    workType:"meta_ads", emailSent:true, outcome:null,
-  },
-  {
-    id:"d7", firstName:"Karthik", lastName:"Iyer", email:"karthik@autoserv.io",
-    phone:"+91 77889 11223", company:"AutoServ Logistics",
-    status:"hot", priority:"P2", notes:"Pilot running. Escalate to decision-maker next call.",
-    requirementCategory:"Software Development",
-    followUpDate: rel(0), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-1).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[0],
-    workType:"campaign", emailSent:true, outcome:"won",
-  },
-  {
-    id:"d8", firstName:"Meera", lastName:"Pillai", email:"meera@urbanstyle.in",
-    phone:"+91 90123 44556", company:"UrbanStyle Fashion",
-    status:"warm", priority:"P2", notes:"Landed via SEO blog post, requested pricing sheet.",
-    requirementCategory:"SEO",
-    followUpDate: rel(4), followupStatus:"pending", history:[],
-    createdAt: new Date(today.getFullYear(), today.getMonth(), today.getDate()-4).toISOString(),
-    badgeGrad: BADGE_GRADIENTS[1],
-    workType:"static", emailSent:true, outcome:null,
-  },
-];
-
-/* ─────────────────────────────────────────────────────────────
-   STORAGE  (dummy for now — swap loadLeads() with your API call)
-───────────────────────────────────────────────────────────── */
-const loadLeads = () => DUMMY_LEADS;
-const EMPTY_FORM = {
-  firstName:"", lastName:"", email:"", phone:"", company:"",
-  status:"warm", priority:"P2", notes:"", followUpDate:"",
-  requirementCategory: REQUIREMENT_CATEGORIES[0],
-};
+async function apiSendLeadForm(path, method, payload, docFile) {
+  const formData = new FormData();
+  formData.append("lead", new Blob([JSON.stringify(payload)], { type: "application/json" }));
+  if (docFile) formData.append("docFile", docFile);
+  const res = await fetch(`${API_BASE}${path}`, { method, body: formData });
+  if (res.status === 409) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "A lead with this phone/email already exists");
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
 
 /* ─────────────────────────────────────────────────────────────
    SMALL SHARED PIECES
@@ -240,7 +277,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 
 const StatusPill = ({ status }) => (
   <span className="status-pill" style={{ color: STATUS_CFG[status]?.color, background: STATUS_CFG[status]?.bg }}>
-    {STATUS_CFG[status]?.label}
+    {STATUS_CFG[status]?.label || status || "—"}
   </span>
 );
 const PriorityPill = ({ priority }) => (
@@ -250,11 +287,10 @@ const PriorityPill = ({ priority }) => (
 );
 const FollowupStatusPill = ({ status }) => (
   <span className={`fus-pill fus-${status || "pending"}`}>
-    {status === "done" ? "Done" : "Pending"}
+    {status === "done" ? "Done" : status ? status : "Pending"}
   </span>
 );
 
-/* Generic overlay shell — click outside to close */
 const OverlayShell = ({ onClose, className = "", children }) => {
   const ref = useRef(null);
   return (
@@ -301,7 +337,7 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
                   <span
                     className={`cg-badge ${hasBlink ? "cg-blink" : ""}`}
                     style={{
-                      background: dayLeads[0].badgeGrad || BADGE_GRADIENTS[0],
+                      background: gradForKey(dayLeads[0].leadStrId || dayLeads[0].leadPrimeId),
                       outline: `2px solid ${PRIORITY_CFG[dayLeads[0].priority]?.color}`,
                       outlineOffset: "1px",
                     }}
@@ -309,12 +345,12 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
                     {dayLeads.length}
                   </span>
                   {dayLeads.slice(0,2).map((l) => (
-                    <div key={l.id} className="cg-chip" style={{
+                    <div key={l.leadPrimeId} className="cg-chip" style={{
                       background:  STATUS_CFG[l.status]?.bg,
                       borderLeft: `2px solid ${STATUS_CFG[l.status]?.color}`,
                       color: STATUS_CFG[l.status]?.color,
                     }}>
-                      {l.firstName || (l.name||"").split(" ")[0]}
+                      {l.firstName}
                     </div>
                   ))}
                   {dayLeads.length > 2 && <div className="cg-chip cg-more">+{dayLeads.length-2}</div>}
@@ -328,7 +364,7 @@ const CalendarGrid = ({ year, month, leadsByDate, onDayClick }) => {
   );
 };
 
-/* ── Charts ── */
+/* ── Charts (dummy data — untouched logic) ── */
 const TrendBarChart = ({ data }) => (
   <ResponsiveContainer width="100%" height={220}>
     <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -370,9 +406,9 @@ const DoughnutChart = ({ counts }) => {
 };
 
 /* ─────────────────────────────────────────────────────────────
-   OVERLAY: Day leads table (calendar cell click)
+   OVERLAY: Day leads table
 ───────────────────────────────────────────────────────────── */
-const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextFollowup, onHistory }) => (
+const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextFollowup, onHistory, onDoc, busyId }) => (
   <OverlayShell onClose={onClose} className="mo-wide">
     <div className="mo-head">
       <div>
@@ -388,12 +424,12 @@ const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextF
             <tr className="sticky top-0">
               <th>First Name</th><th>Last Name</th><th>Mobile</th><th>Company</th>
               <th>Requirement</th><th>Priority</th><th>Follow-up Date</th><th>Note</th>
-              <th>Status</th><th className="action-th" >Actions</th>
+              <th>Status</th><th className="action-th">Actions</th>
             </tr>
           </thead>
           <tbody>
             {leads.map((l) => (
-              <tr key={l.id} className={`tbl-row tbl-${l.status}`}>
+              <tr key={l.leadPrimeId} className={`tbl-row tbl-${l.status}`}>
                 <td className="td-name">{l.firstName}</td>
                 <td className="td-name">{l.lastName}</td>
                 <td className="td-phone">{l.phone}</td>
@@ -403,14 +439,10 @@ const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextF
                 <td>{fmtDate(l.followUpDate)}</td>
                 <td className="td-note">{(l.notes || "—").slice(0, 40)}</td>
                 <td><FollowupStatusPill status={l.followupStatus} /></td>
-                <td className="action-th ">
-                  <div className="act-row">
-                    <button className="act-btn act-v" title="View" onClick={() => onView(l)}><Eye size={15} /></button>
-                    <button className="act-btn act-e" title="Edit" onClick={() => onEdit(l)}><Pencil size={15} /></button>
-                    <button className="act-btn act-done" title="Mark done" onClick={() => onDone(l)}><CheckCircle2 size={15} /></button>
-                    <button className="act-btn act-next" title="Next follow-up" onClick={() => onNextFollowup(l)}><CalendarPlus size={15} /></button>
-                    <button className="act-btn act-hist" title="History" onClick={() => onHistory(l)}><History size={15} /></button>
-                  </div>
+                <td className="action-th">
+                  <ActionRow lead={l} busyId={busyId}
+                    onView={onView} onEdit={onEdit} onDone={onDone}
+                    onNextFollowup={onNextFollowup} onHistory={onHistory} onDoc={onDoc} />
                 </td>
               </tr>
             ))}
@@ -422,8 +454,8 @@ const DayLeadsOverlay = ({ date, leads, onClose, onView, onEdit, onDone, onNextF
   </OverlayShell>
 );
 
-/* ── OVERLAY: Mark as done (note + submit/cancel) ── */
-const DoneOverlay = ({ lead, onClose, onSubmit }) => {
+/* ── OVERLAY: Mark as done ── */
+const DoneOverlay = ({ lead, onClose, onSubmit, saving }) => {
   const [note, setNote] = useState("");
   const [err, setErr] = useState("");
   const submit = () => {
@@ -440,20 +472,22 @@ const DoneOverlay = ({ lead, onClose, onSubmit }) => {
         <div className="fg">
           <label>Follow-up Note *</label>
           <textarea rows={4} placeholder="What happened on this call/meeting?"
-            value={note} onChange={(e) => { setNote(e.target.value); setErr(""); }} className={err ? "fe" : ""} />
+            value={note} onChange={(e) => { setNote(e.target.value); setErr(""); }} className={err ? "fe" : ""} disabled={saving} />
           {err && <span className="fe-msg">{err}</span>}
         </div>
       </div>
       <div className="mo-foot">
-        <button className="btn-cancel" onClick={onClose}>Cancel</button>
-        <button className="btn-save btn-done" onClick={submit}>Submit</button>
+        <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn-save btn-done" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : "Submit"}
+        </button>
       </div>
     </OverlayShell>
   );
 };
 
-/* ── OVERLAY: Next follow-up (date picker + submit/cancel) ── */
-const NextFollowupOverlay = ({ lead, onClose, onSubmit }) => {
+/* ── OVERLAY: Next follow-up ── */
+const NextFollowupOverlay = ({ lead, onClose, onSubmit, saving }) => {
   const [date, setDate] = useState("");
   const [err, setErr] = useState("");
   const submit = () => {
@@ -469,43 +503,48 @@ const NextFollowupOverlay = ({ lead, onClose, onSubmit }) => {
       <div className="mo-body">
         <div className="fg">
           <label>Next Follow-up Date *</label>
-          <input type="date" value={date} className={err ? "fe" : ""}
+          <input type="date" value={date} className={err ? "fe" : ""} disabled={saving}
             onChange={(e) => { setDate(e.target.value); setErr(""); }} />
           {err && <span className="fe-msg">{err}</span>}
         </div>
       </div>
       <div className="mo-foot">
-        <button className="btn-cancel" onClick={onClose}>Cancel</button>
-        <button className="btn-save" onClick={submit}>Submit</button>
+        <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn-save" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : "Submit"}
+        </button>
       </div>
     </OverlayShell>
   );
 };
 
 /* ── OVERLAY: History ── */
-const HistoryOverlay = ({ lead, onClose }) => (
+const HistoryOverlay = ({ lead, history, loading, onClose }) => (
   <OverlayShell onClose={onClose}>
     <div className="mo-head">
       <div><p className="mo-sub">FOLLOW-UP HISTORY</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
       <button className="mo-x" onClick={onClose}><X size={16} /></button>
     </div>
     <div className="mo-body">
-      {(!lead.history || lead.history.length === 0) ? (
+      {loading ? (
+        <div className="hist-empty"><Loader2 size={26} className="spin" /><p>Loading history…</p></div>
+      ) : (!history || history.length === 0) ? (
         <div className="hist-empty">
           <Inbox size={30} strokeWidth={1.5} />
           <p>No past follow-ups for this lead</p>
         </div>
       ) : (
         <div className="hist-list">
-          {[...lead.history].reverse().map((h, i) => (
-            <div key={i} className={`hist-item hist-${h.action}`}>
-              <div className="hist-icon">{h.action === "done" ? <CheckCircle2 size={14} /> : <CalendarPlus size={14} />}</div>
+          {history.map((h) => (
+            <div key={h.followupPrimeId} className={`hist-item hist-${h.followupStatus === "done" ? "done" : "next-followup"}`}>
+              <div className="hist-icon">{h.followupStatus === "done" ? <CheckCircle2 size={14} /> : <CalendarPlus size={14} />}</div>
               <div className="hist-content">
                 <div className="hist-row">
-                  <span className="hist-date">{fmtDate(h.date)}</span>
-                  <span className="hist-tag">{h.action === "done" ? "Completed" : "Carried Forward"}</span>
+                  <span className="hist-date">{fmtDate(h.followupDate)}</span>
+                  <span className="hist-tag">{h.followupStatus === "done" ? "Completed" : "Scheduled"}</span>
                 </div>
-                <p className="hist-note">{h.note}</p>
+                <p className="hist-note">{h.followupNotes || "—"}</p>
+                <p className="hist-at">Logged {fmtDateTime(h.createdAt)}</p>
               </div>
             </div>
           ))}
@@ -516,8 +555,8 @@ const HistoryOverlay = ({ lead, onClose }) => (
   </OverlayShell>
 );
 
-/* ── OVERLAY: split read-only lead detail (view) ── */
-const LeadDetailOverlay = ({ lead, onClose }) => (
+/* ── OVERLAY: read-only lead detail ── */
+const LeadDetailOverlay = ({ lead, onClose, onDoc }) => (
   <OverlayShell onClose={onClose} className="mo-view">
     <div className="mo-head">
       <div><p className="mo-sub">LEAD DETAILS</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
@@ -542,8 +581,18 @@ const LeadDetailOverlay = ({ lead, onClose }) => (
           <div className="vg-item"><span className="vg-lbl">Priority</span><PriorityPill priority={lead.priority} /></div>
           <div className="vg-item"><span className="vg-lbl">Follow-up</span><span className="vg-val">{fmtDate(lead.followUpDate)}</span></div>
           <div className="vg-item"><span className="vg-lbl">Follow-up Status</span><FollowupStatusPill status={lead.followupStatus} /></div>
-          <div className="vg-item"><span className="vg-lbl">Created</span><span className="vg-val">{fmtDate(lead.createdAt)}</span></div>
+          <div className="vg-item"><span className="vg-lbl">Created</span><span className="vg-val">{fmtDateTime(lead.createdAt)}</span></div>
         </div>
+      </div>
+      <div className="vg-section">
+        <p className="vg-section-title">Document</p>
+        {lead.docFileUrl ? (
+          <button className="btn-save" style={{ width: "fit-content" }} onClick={() => onDoc(lead)}>
+            <FileText size={14} style={{ marginRight: 6 }} /> {lead.docFileName || "View Document"}
+          </button>
+        ) : (
+          <p className="doc-empty-msg"><FileX2 size={16} /> No document uploaded</p>
+        )}
       </div>
       <div className="vg-section">
         <p className="vg-section-title">Notes</p>
@@ -554,28 +603,42 @@ const LeadDetailOverlay = ({ lead, onClose }) => (
   </OverlayShell>
 );
 
-/* ── Edit form (all fields editable) ── */
-const LeadFormModal = ({ date, lead, onClose, onSave }) => {
+/* ── Edit / Add form (now with file upload, matching AddLead.jsx) ── */
+const LeadFormModal = ({ date, lead, onClose, onSave, saving }) => {
   const [form, setForm] = useState(() => ({
     ...EMPTY_FORM,
-    ...(lead ? { ...lead, ...splitName(lead) } : { followUpDate: toKey(date) }),
+    ...(lead ? { ...lead } : { followUpDate: toKey(date || today) }),
   }));
   const [errs, setErrs] = useState({});
+  const [docFile, setDocFile] = useState(null);
+  const [fileErr, setFileErr] = useState("");
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      setFileErr(`${file.name} exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+      return;
+    }
+    setFileErr("");
+    setDocFile(file);
+  };
 
   const validate = () => {
     const e = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
     if (!form.lastName.trim())  e.lastName  = "Last name is required";
     if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Valid email required";
-    if (!form.phone.trim()) e.phone = "Phone is required";
+    if (!/^[6-9]\d{9}$/.test((form.phone||"").replace(/\D/g,""))) e.phone = "Valid 10-digit mobile required";
     return e;
   };
 
   const submit = () => {
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
-    onSave(form, !!lead);
+    onSave(form, !!lead, docFile);
   };
 
   return (
@@ -591,37 +654,38 @@ const LeadFormModal = ({ date, lead, onClose, onSave }) => {
         <div className="fg-grid">
           <div className="fg">
             <label>First Name *</label>
-            <input value={form.firstName} placeholder="Arjun" className={errs.firstName ? "fe" : ""} onChange={(e) => set("firstName", e.target.value)} />
+            <input value={form.firstName} placeholder="Arjun" className={errs.firstName ? "fe" : ""} disabled={saving} onChange={(e) => set("firstName", e.target.value)} />
             {errs.firstName && <span className="fe-msg">{errs.firstName}</span>}
           </div>
           <div className="fg">
             <label>Last Name *</label>
-            <input value={form.lastName} placeholder="Mehta" className={errs.lastName ? "fe" : ""} onChange={(e) => set("lastName", e.target.value)} />
+            <input value={form.lastName} placeholder="Mehta" className={errs.lastName ? "fe" : ""} disabled={saving} onChange={(e) => set("lastName", e.target.value)} />
             {errs.lastName && <span className="fe-msg">{errs.lastName}</span>}
           </div>
           <div className="fg">
             <label>Email *</label>
-            <input type="email" value={form.email} placeholder="arjun@company.com" className={errs.email ? "fe" : ""} onChange={(e) => set("email", e.target.value)} />
+            <input type="email" value={form.email} placeholder="arjun@company.com" className={errs.email ? "fe" : ""} disabled={saving} onChange={(e) => set("email", e.target.value)} />
             {errs.email && <span className="fe-msg">{errs.email}</span>}
           </div>
           <div className="fg">
             <label>Phone *</label>
-            <input type="tel" value={form.phone} placeholder="+91 98765 43210" className={errs.phone ? "fe" : ""} onChange={(e) => set("phone", e.target.value)} />
+            <input type="tel" value={form.phone} maxLength={10} placeholder="9876543210" className={errs.phone ? "fe" : ""} disabled={saving}
+              onChange={(e) => set("phone", e.target.value.replace(/\D/g,"").slice(0,10))} />
             {errs.phone && <span className="fe-msg">{errs.phone}</span>}
           </div>
           <div className="fg">
             <label>Company</label>
-            <input value={form.company} placeholder="Acme Corp" onChange={(e) => set("company", e.target.value)} />
+            <input value={form.company} placeholder="Acme Corp" disabled={saving} onChange={(e) => set("company", e.target.value)} />
           </div>
           <div className="fg">
             <label>Requirement Category</label>
-            <select value={form.requirementCategory} onChange={(e) => set("requirementCategory", e.target.value)}>
+            <select value={form.requirementCategory} disabled={saving} onChange={(e) => set("requirementCategory", e.target.value)}>
               {REQUIREMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div className="fg">
             <label>Status</label>
-            <select value={form.status} onChange={(e) => set("status", e.target.value)}>
+            <select value={form.status} disabled={saving} onChange={(e) => set("status", e.target.value)}>
               <option value="hot">🔥 Hot</option>
               <option value="warm">🌤 Warm</option>
               <option value="cold">❄️ Cold</option>
@@ -631,30 +695,61 @@ const LeadFormModal = ({ date, lead, onClose, onSave }) => {
             <label>Priority</label>
             <div className="prio-row">
               {["P1","P2","P3"].map((p) => (
-                <button key={p} type="button" className={`prio-btn prio-${p.toLowerCase()} ${form.priority===p?"active":""}`} onClick={() => set("priority", p)}>{p}</button>
+                <button key={p} type="button" disabled={saving} className={`prio-btn prio-${p.toLowerCase()} ${form.priority===p?"active":""}`} onClick={() => set("priority", p)}>{p}</button>
               ))}
             </div>
           </div>
           <div className="fg fg-full">
             <label>Follow-up Date</label>
-            <input type="date" value={form.followUpDate} onChange={(e) => set("followUpDate", e.target.value)} />
+            <input type="date" value={form.followUpDate} disabled={saving} onChange={(e) => set("followUpDate", e.target.value)} />
           </div>
           <div className="fg fg-full">
             <label>Notes</label>
-            <textarea rows={3} placeholder="Add context about this lead…" value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+            <textarea rows={3} placeholder="Add context about this lead…" value={form.notes} disabled={saving} onChange={(e) => set("notes", e.target.value)} />
+          </div>
+          <div className="fg fg-full">
+            <label className="file-drop" htmlFor="dash-lead-attachment">
+              <span className="file-drop-icon">📎 Upload file</span>
+              <span className="file-drop-hint">PDF, DOC, DOCX, JPG, PNG — up to {MAX_FILE_SIZE_MB}MB</span>
+            </label>
+            <input
+              id="dash-lead-attachment"
+              type="file"
+              accept={ACCEPTED_FILE_TYPES}
+              onChange={handleFileSelect}
+              className="file-input-hidden"
+              disabled={saving}
+            />
+            {fileErr && <span className="fe-msg">{fileErr}</span>}
+            {docFile && (
+              <div className="file-list">
+                <div className="file-chip">
+                  <span className="file-chip-name">{docFile.name}</span>
+                  <span className="file-chip-size">{(docFile.size / 1024).toFixed(0)} KB</span>
+                  <button type="button" className="file-chip-remove" onClick={() => setDocFile(null)} disabled={saving}>✕</button>
+                </div>
+              </div>
+            )}
+            {!docFile && lead?.docFileUrl && (
+              <p className="doc-empty-msg" style={{ marginTop: 8 }}>
+                <FileText size={14} /> Existing: {lead.docFileName || "document"} (uploading a new file will replace it)
+              </p>
+            )}
           </div>
         </div>
       </div>
       <div className="mo-foot">
-        <button className="btn-cancel" onClick={onClose}>Cancel</button>
-        <button className="btn-save" onClick={submit}>{lead ? "Update Lead" : "Save Lead"}</button>
+        <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn-save" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : (lead ? "Update Lead" : "Save Lead")}
+        </button>
       </div>
     </OverlayShell>
   );
 };
 
-/* ── OVERLAY: Convert (deal done!/cancel) ── */
-const ConvertOverlay = ({ lead, onClose, onConfirm }) => (
+/* ── OVERLAY: Convert ── */
+const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => (
   <OverlayShell onClose={onClose}>
     <div className="mo-head">
       <div><p className="mo-sub">CONVERT LEAD</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
@@ -665,33 +760,36 @@ const ConvertOverlay = ({ lead, onClose, onConfirm }) => (
       <p className="convert-msg">Mark this lead as a closed, won deal?</p>
     </div>
     <div className="mo-foot">
-      <button className="btn-cancel" onClick={onClose}>Cancel</button>
-      <button className="btn-save btn-convert" onClick={() => onConfirm(lead)}>Deal Done! 🎉</button>
+      <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
+      <button className="btn-save btn-convert" onClick={() => onConfirm(lead)} disabled={saving}>
+        {saving ? <Loader2 size={15} className="spin" /> : "Deal Done! 🎉"}
+      </button>
     </div>
   </OverlayShell>
 );
 
-
-/* ── OVERLAY: Confirm delete (yes/no) ── */
-const DeleteConfirmOverlay = ({ label, onCancel, onConfirm }) => (
+/* ── OVERLAY: Confirm delete ── */
+const DeleteConfirmOverlay = ({ label, onCancel, onConfirm, saving }) => (
   <OverlayShell onClose={onCancel}>
     <div className="mo-head">
       <div><p className="mo-sub">CONFIRM DELETE</p><h2 className="mo-title">{label}</h2></div>
       <button className="mo-x" onClick={onCancel}><X size={16} /></button>
     </div>
     <div className="mo-body convert-body">
-      <XCircle size={40} strokeWidth={1.5} className="delete-icon" />
+      <FileX2 size={40} strokeWidth={1.5} className="delete-icon" />
       <p className="convert-msg">This action can't be undone. Are you sure?</p>
     </div>
     <div className="mo-foot">
-      <button className="btn-cancel" onClick={onCancel}>No, Keep It</button>
-      <button className="btn-save btn-delete" onClick={onConfirm}>Yes, Delete</button>
+      <button className="btn-cancel" onClick={onCancel} disabled={saving}>No, Keep It</button>
+      <button className="btn-save btn-delete" onClick={onConfirm} disabled={saving}>
+        {saving ? <Loader2 size={15} className="spin" /> : "Yes, Delete"}
+      </button>
     </div>
   </OverlayShell>
 );
 
-/* ── Celebration burst (confetti + sound + message) ── */
-// TODO: drop your own clap sound file at public/sounds/clap.mp3 — this path is a placeholder.
+/* ── Celebration burst (confetti + sound) ── */
+// Drop your own clap sound at public/sounds/clap.mp3 — this path is a placeholder.
 const CLAP_SOUND_URL = "/sounds/clap.mp3";
 const CelebrationOverlay = ({ name }) => (
   <div className="celebrate-overlay">
@@ -703,7 +801,7 @@ const CelebrationOverlay = ({ name }) => (
   </div>
 );
 
-/* ── OVERLAY: Bulk email template picker ── */
+/* ── OVERLAY: Bulk email (dummy, untouched) ── */
 const BulkEmailOverlay = ({ count, onClose, onSend }) => (
   <OverlayShell onClose={onClose}>
     <div className="mo-head">
@@ -727,6 +825,103 @@ const BulkEmailOverlay = ({ count, onClose, onSend }) => (
     <div className="mo-foot"><button className="btn-cancel" onClick={onClose}>Cancel</button></div>
   </OverlayShell>
 );
+
+/* ── OVERLAY: Bulk WhatsApp forward ── */
+/* ── OVERLAY: Bulk WhatsApp forward — pick a template first, then send ── */
+const BulkWhatsAppOverlay = ({ leads, onClose }) => {
+  const [template, setTemplate] = useState(null); // null = still choosing
+  const [sentIds, setSentIds] = useState([]);
+
+  const sendOne = (lead) => {
+    const phoneDigits = (lead.phone || "").replace(/\D/g, "");
+    if (phoneDigits.length < 10) {
+      toast.error(`${lead.firstName} has no valid phone number`);
+      return;
+    }
+    const waPhone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+    const msg = WA_TEMPLATES[template].build(lead);
+    window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+    setSentIds((p) => [...p, lead.leadPrimeId]);
+  };
+
+  const sendAll = () => {
+    leads.forEach((lead, idx) => {
+      setTimeout(() => sendOne(lead), idx * 400); // stagger to reduce popup-blocking
+    });
+  };
+
+  // Step 1 — template selection (must pick before any send is possible)
+  if (!template) {
+    return (
+      <OverlayShell onClose={onClose}>
+        <div className="mo-head">
+          <div><p className="mo-sub">SELECT TEMPLATE</p><h2 className="mo-title">{leads.length} lead{leads.length!==1?"s":""} selected</h2></div>
+          <button className="mo-x" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="mo-body">
+          <p className="email-hint">Choose a WhatsApp message template to send to all selected leads:</p>
+          <div className="email-tpl-row">
+            <button className="email-tpl-btn" onClick={() => setTemplate("followup")}>
+              <MessageSquareText size={20} /><span>Follow-up</span>
+            </button>
+            <button className="email-tpl-btn" onClick={() => setTemplate("meeting_reminder")}>
+              <CalendarCheck2 size={20} /><span>Meeting Reminder</span>
+            </button>
+            <button className="email-tpl-btn" onClick={() => setTemplate("payment_reminder")}>
+              <BellRing size={20} /><span>Payment Reminder</span>
+            </button>
+          </div>
+        </div>
+        <div className="mo-foot"><button className="btn-cancel" onClick={onClose}>Cancel</button></div>
+      </OverlayShell>
+    );
+  }
+
+  // Step 2 — preview + per-lead / bulk send, now that a template is locked in
+  return (
+    <OverlayShell onClose={onClose} className="mo-wide">
+      <div className="mo-head">
+        <div>
+          <p className="mo-sub">FORWARD WHATSAPP — {WA_TEMPLATES[template].label.toUpperCase()}</p>
+          <h2 className="mo-title">{leads.length} lead{leads.length!==1?"s":""} selected</h2>
+        </div>
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <p className="email-hint">
+          Opens WhatsApp Web/App with a pre-filled "{WA_TEMPLATES[template].label}" message for each contact. Each tab needs to be sent manually inside WhatsApp.
+        </p>
+        <button className="wa-change-tpl" onClick={() => { setTemplate(null); setSentIds([]); }}>
+          ← Change template
+        </button>
+        <div className="wa-lead-list">
+          {leads.map((lead) => (
+            <div key={lead.leadPrimeId} className="wa-lead-row">
+              <div className="wa-lead-info">
+                <span className="wa-lead-name">{lead.firstName} {lead.lastName}</span>
+                <span className="wa-lead-phone">{lead.phone || "—"}</span>
+                <span className="wa-lead-req">{lead.requirementCategory || "—"}</span>
+              </div>
+              <button
+                className={`act-btn act-wa ${sentIds.includes(lead.leadPrimeId) ? "act-wa-sent" : ""}`}
+                onClick={() => sendOne(lead)}
+                title="Open in WhatsApp"
+              >
+                {sentIds.includes(lead.leadPrimeId) ? <CheckCircle2 size={15} /> : <Send size={15} />}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose}>Close</button>
+        <button className="btn-save" onClick={sendAll}>
+          <MessageCircle size={15} style={{ marginRight: 6 }} /> Send All
+        </button>
+      </div>
+    </OverlayShell>
+  );
+};
 
 /* ── OVERLAY: Export to Excel ── */
 const ExportOverlay = ({ statusFilter, onClose, onExport }) => {
@@ -763,52 +958,96 @@ const ExportOverlay = ({ statusFilter, onClose, onExport }) => {
   );
 };
 
+/* ── Shared action-button row (used by both tabs) ── */
+const ActionRow = ({ lead, busyId, onView, onEdit, onDone, onNextFollowup, onHistory, onDoc, onConvert, onDelete }) => {
+  const isBusy = busyId === lead.leadPrimeId;
+  return (
+    <div className="act-row">
+      <button className="act-btn act-v" title="View" onClick={() => onView(lead)} disabled={isBusy}><Eye size={15} /></button>
+      <button className="act-btn act-e" title="Edit" onClick={() => onEdit(lead)} disabled={isBusy}><Pencil size={15} /></button>
+      {onDone && <button className="act-btn act-done" title="Mark done" onClick={() => onDone(lead)} disabled={isBusy}><CheckCircle2 size={15} /></button>}
+      {onNextFollowup && <button className="act-btn act-next" title="Next follow-up" onClick={() => onNextFollowup(lead)} disabled={isBusy}><CalendarPlus size={15} /></button>}
+      <button className="act-btn act-hist" title="History" onClick={() => onHistory(lead)} disabled={isBusy}><History size={15} /></button>
+      <button
+        className={`act-btn act-doc ${!lead.docFileUrl ? "act-doc-empty" : ""}`}
+        title={lead.docFileUrl ? "View document" : "No document uploaded"}
+        onClick={() => onDoc(lead)}
+        disabled={isBusy}
+      >
+        {lead.docFileUrl ? <FileText size={15} /> : <FileX2 size={15} />}
+      </button>
+      {onConvert && <button className="act-btn act-convert" title="Convert" onClick={() => onConvert(lead)} disabled={isBusy}><Handshake size={15} /></button>}
+      {onDelete && <button className="act-btn act-d" title="Delete" onClick={() => onDelete(lead.leadPrimeId)} disabled={isBusy}>🗑</button>}
+      {isBusy && <Loader2 size={14} className="spin" />}
+    </div>
+  );
+};
+
 /* ─────────────────────────────────────────────────────────────
    DASHBOARD (root)
 ───────────────────────────────────────────────────────────── */
 const Dashboard = () => {
-  const [leads,     setLeads]     = useState(loadLeads);
-  const [activeYM,  setActiveYM]  = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [leads, setLeads]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
 
-  const [dayOverlay, setDayOverlay]   = useState(null); // { date, leads }
-  const [editLead,   setEditLead]     = useState(null);
-  const [viewLead,   setViewLead]     = useState(null);
-  const [doneLead,   setDoneLead]     = useState(null);
-  const [nextLead,   setNextLead]     = useState(null);
-  const [histLead,   setHistLead]     = useState(null);
-  const [convertLead,setConvertLead]  = useState(null);
-  const [celebrate,  setCelebrate]    = useState(null); // name string while showing
+  const [activeYM, setActiveYM] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [activeTab, setActiveTab] = useState("pipeline"); // "pipeline" | "nextFollowups"
+
+  const [dayOverlay,  setDayOverlay]  = useState(null);
+  const [editLead,    setEditLead]    = useState(null);
+  const [addingNew,   setAddingNew]   = useState(false);
+  const [viewLead,    setViewLead]    = useState(null);
+  const [doneLead,    setDoneLead]    = useState(null);
+  const [nextLead,    setNextLead]    = useState(null);
+  const [histLead,    setHistLead]    = useState(null);
+  const [histData,    setHistData]    = useState([]);
+  const [histLoading, setHistLoading] = useState(false);
+  const [convertLead, setConvertLead] = useState(null);
+  const [celebrate,   setCelebrate]   = useState(null);
 
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+  const [bulkWhatsAppOpen, setBulkWhatsAppOpen] = useState(false);
   const [exportOpen,    setExportOpen]    = useState(false);
 
   const [search,   setSearch]   = useState("");
   const [stFilter, setStFilter] = useState("all");
   const [selected, setSelected] = useState([]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const [deleteTarget, setDeleteTarget] = useState(null); // { type: "one", id } | { type: "bulk" }
+  /* ── Fetch leads ── */
+  const fetchLeads = useCallback(async () => {
+    setLoading(true);
+    try {
+      const page = await apiGet(`/all-leads?page=0&size=200`);
+      setLeads(page.content || []);
+    } catch (err) {
+      console.error("Failed to load leads:", err);
+      toast.error("Failed to load leads");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  /* date → pending leads map (done leads never show again — dedupes automatically) */
-  const leadsByDate = useMemo(() => {
-    const map = {};
-    leads.forEach((l) => {
-      if (!l.followUpDate || l.followupStatus === "done") return;
-      (map[l.followUpDate] = map[l.followUpDate] || []).push(l);
-    });
-    return map;
-  }, [leads]);
+  useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
+  const visibleLeads = useMemo(
+    () => leads.filter((l) => !l.leadConverted && !l.deletedLead),
+    [leads]
+  );
+
+  /* ── Stats + charts run off dummy data for now, independent of real leads ── */
   const stats = useMemo(() => {
     const todayKey = toKey(today);
     return {
-      total: leads.length,
-      todayFollowups: leads.filter((l) => l.followUpDate === todayKey && l.followupStatus !== "done").length,
-      emailSent: leads.filter((l) => l.emailSent).length,
-      totalFollowups: leads.filter((l) => l.followUpDate).length,
-      won: leads.filter((l) => l.outcome === "won").length,
-      lost: leads.filter((l) => l.outcome === "lost").length,
+      total: DUMMY_LEADS.length,
+      todayFollowups: DUMMY_LEADS.filter((l) => l.followUpDate === todayKey && l.followupStatus !== "done").length,
+      emailSent: DUMMY_LEADS.filter((l) => l.emailSent).length,
+      totalFollowups: DUMMY_LEADS.filter((l) => l.followUpDate).length,
+      won: DUMMY_LEADS.filter((l) => l.outcome === "won").length,
+      lost: DUMMY_LEADS.filter((l) => l.outcome === "lost").length,
     };
-  }, [leads]);
+  }, []);
 
   const monthlyTrend = useMemo(() => {
     const buckets = {}; const labels = [];
@@ -818,23 +1057,32 @@ const Dashboard = () => {
       buckets[key] = 0;
       labels.push({ key, label: MONTH_NAMES[d.getMonth()].slice(0, 3) });
     }
-    leads.forEach((l) => {
+    DUMMY_LEADS.forEach((l) => {
       const d = new Date(l.createdAt);
       const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
       if (key in buckets) buckets[key]++;
     });
     return labels.map((l) => ({ ...l, count: buckets[l.key] }));
-  }, [leads]);
+  }, []);
 
   const workTypeDist = useMemo(() => {
     const counts = { static: 0, dynamic: 0, meta_ads: 0, campaign: 0 };
-    leads.forEach((l) => { if (l.workType && counts[l.workType] !== undefined) counts[l.workType]++; });
+    DUMMY_LEADS.forEach((l) => { if (l.workType && counts[l.workType] !== undefined) counts[l.workType]++; });
     return counts;
-  }, [leads]);
+  }, []);
+
+  const leadsByDate = useMemo(() => {
+    const map = {};
+    visibleLeads.forEach((l) => {
+      if (!l.followUpDate || l.followupStatus === "done") return;
+      (map[l.followUpDate] = map[l.followUpDate] || []).push(l);
+    });
+    return map;
+  }, [visibleLeads]);
 
   const upcoming = useMemo(() => {
     const todayKey = toKey(today);
-    return [...leads]
+    return [...visibleLeads]
       .filter((l) => l.followUpDate && l.followupStatus !== "done")
       .sort((a, b) => {
         const isTodayA = a.followUpDate === todayKey, isTodayB = b.followUpDate === todayKey;
@@ -843,16 +1091,26 @@ const Dashboard = () => {
         return a.followUpDate.localeCompare(b.followUpDate);
       })
       .slice(0, 6);
-  }, [leads]);
+  }, [visibleLeads]);
 
-  const filtered = useMemo(() =>
-    leads.filter((l) =>
+  const pipelineLeads = useMemo(() =>
+    visibleLeads.filter((l) =>
       (stFilter === "all" || l.status === stFilter) &&
       [l.firstName, l.lastName, l.email, l.company || ""].some((f) => (f||"").toLowerCase().includes(search.toLowerCase()))
     ),
-  [leads, stFilter, search]);
+  [visibleLeads, stFilter, search]);
 
-  const visIds    = filtered.map((l) => l.id);
+  const nextFollowupLeads = useMemo(() =>
+    visibleLeads.filter((l) =>
+      (l.followupCount || 0) > 1 &&
+      (stFilter === "all" || l.status === stFilter) &&
+      [l.firstName, l.lastName, l.email, l.company || ""].some((f) => (f||"").toLowerCase().includes(search.toLowerCase()))
+    ),
+  [visibleLeads, stFilter, search]);
+
+  const activeList = activeTab === "pipeline" ? pipelineLeads : nextFollowupLeads;
+
+  const visIds    = activeList.map((l) => l.leadPrimeId);
   const allCheck  = visIds.length > 0 && visIds.every((id) => selected.includes(id));
   const toggleAll = () => allCheck
     ? setSelected((p) => p.filter((id) => !visIds.includes(id)))
@@ -860,82 +1118,172 @@ const Dashboard = () => {
   const toggleOne = (id) => setSelected((p) => p.includes(id) ? p.filter((s) => s !== id) : [...p, id]);
 
   /* ── CRUD ── */
-  const handleSave = (form, isEdit) => {
-    if (isEdit) {
-      setLeads((p) => p.map((l) => (l.id === form.id ? { ...form } : l)));
-    } else {
-      setLeads((p) => [{ ...form, id: Date.now().toString(), createdAt: new Date().toISOString(), badgeGrad: randomGrad(), followupStatus: "pending", history: [] }, ...p]);
+  const handleSave = async (form, isEdit, docFile) => {
+    setBusyId(isEdit ? form.leadPrimeId : -1);
+    try {
+      const payload = {
+        firstName: form.firstName, lastName: form.lastName, email: form.email, phone: form.phone,
+        company: form.company, status: form.status, priority: form.priority, source: form.source || "Website",
+        requirementCategory: form.requirementCategory, tags: form.tags || "",
+        followUpDate: form.followUpDate, followupStatus: form.followupStatus || "pending",
+        notes: form.notes, leadConverted: false,
+      };
+      if (isEdit) {
+        await apiSendLeadForm(`/${form.leadPrimeId}`, "PATCH", payload, docFile);
+        toast.success("Lead updated");
+      } else {
+        await apiSendLeadForm(``, "POST", payload, docFile);
+        toast.success("Lead created");
+      }
+      await fetchLeads();
+      setEditLead(null);
+      setAddingNew(false);
+    } catch (err) {
+      console.error("Save failed:", err);
+      toast.error(err.message || "Failed to save lead");
+    } finally {
+      setBusyId(null);
     }
-    toast.success(isEdit ? "Lead updated" : "Lead created");
-    setEditLead(null);
   };
 
-const delOne = (id) => setDeleteTarget({ type: "one", id });
+  const delOne = (id) => setDeleteTarget({ type: "one", id });
+  const delBulk = () => { if (selected.length) setDeleteTarget({ type: "bulk" }); };
 
-  const delBulk = () => {
-    if (!selected.length) return;
-    setDeleteTarget({ type: "bulk" });
-  };
-
-  const confirmDelete = () => {
-    if (deleteTarget.type === "one") {
-      setLeads((p) => p.filter((l) => l.id !== deleteTarget.id));
-      setSelected((p) => p.filter((s) => s !== deleteTarget.id));
-      toast.success("Lead deleted");
-    } else {
-      setLeads((p) => p.filter((l) => !selected.includes(l.id)));
-      toast.success(`${selected.length} leads deleted`);
-      setSelected([]);
+  const confirmDelete = async () => {
+    setBusyId(-1);
+    try {
+      if (deleteTarget.type === "one") {
+        const res = await fetch(`${API_BASE}/delete-lead/${deleteTarget.id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+        toast.success("Lead deleted");
+        setSelected((p) => p.filter((s) => s !== deleteTarget.id));
+      } else {
+        const res = await fetch(`${API_BASE}/delete-bulk`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(selected),
+        });
+        if (!res.ok) throw new Error(`Bulk delete failed (${res.status})`);
+        toast.success(`${selected.length} lead(s) deleted`);
+        setSelected([]);
+      }
+      await fetchLeads();
+    } catch (err) {
+      console.error("Delete failed:", err);
+      toast.error(err.message || "Failed to delete");
+    } finally {
+      setBusyId(null);
+      setDeleteTarget(null);
     }
-    setDeleteTarget(null);
-  };
-  /* ── Follow-up flow handlers ── */
-  const handleDoneSubmit = (lead, note) => {
-    setLeads((p) => p.map((l) => l.id === lead.id ? {
-      ...l,
-      followupStatus: "done",
-      history: [...(l.history || []), { date: l.followUpDate, note, action: "done", at: new Date().toISOString() }],
-    } : l));
-    setDoneLead(null);
-
-    toast.success("Follow-up marked as done");
-
-    // keep the day overlay's snapshot in sync if it's open
-    setDayOverlay((ov) => ov ? { ...ov, leads: ov.leads.filter((x) => x.id !== lead.id) } : ov);
   };
 
-  const handleNextFollowupSubmit = (lead, newDate) => {
-    setLeads((p) => p.map((l) => l.id === lead.id ? {
-      ...l,
-      history: [...(l.history || []), { date: l.followUpDate, note: `Carried forward to ${fmtDate(newDate)}`, action: "next-followup", at: new Date().toISOString() }],
-      followUpDate: newDate,
-    } : l));
-    setNextLead(null);
-    toast.success("Next follow-up scheduled");
-    setDayOverlay((ov) => ov ? { ...ov, leads: ov.leads.filter((x) => x.id !== lead.id) } : ov);
+  /* ── Follow-up flow ── */
+  const handleDoneSubmit = async (lead, note) => {
+    setBusyId(lead.leadPrimeId);
+    try {
+      const res = await fetch(`${API_BASE}/add/${lead.leadPrimeId}/followup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ followupDate: lead.followUpDate, followupStatus: "done", followupNotes: note }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+
+      toast.success("Follow-up marked as done");
+      setDoneLead(null);
+      setDayOverlay((ov) => ov ? { ...ov, leads: ov.leads.filter((x) => x.leadPrimeId !== lead.leadPrimeId) } : ov);
+      await fetchLeads();
+    } catch (err) {
+      console.error("Mark done failed:", err);
+      toast.error(err.message || "Failed to mark follow-up as done");
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  /* ── Convert + celebration ── */
-  const handleConvertConfirm = (lead) => {
-    setConvertLead(null);
-    setLeads((p) => p.map((l) => l.id === lead.id ? { ...l, outcome: "won" } : l));
+  const handleNextFollowupSubmit = async (lead, newDate) => {
+    setBusyId(lead.leadPrimeId);
+    try {
+      const res = await fetch(`${API_BASE}/add/${lead.leadPrimeId}/followup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ followupDate: newDate, followupStatus: "pending", followupNotes: `Carried forward to ${fmtDate(newDate)}` }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
 
-    // confetti burst
-    confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-    setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 70, origin: { x: 0 } }), 200);
-    setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 70, origin: { x: 1 } }), 200);
-
-    try { const audio = new Audio(CLAP_SOUND_URL); audio.volume = 0.6; audio.play().catch(() => {}); } catch (e) {}
-
-    setCelebrate(`${lead.firstName} ${lead.lastName}`);
-    setTimeout(() => setCelebrate(null), 2600);
+      toast.success("Next follow-up scheduled");
+      setNextLead(null);
+      setDayOverlay((ov) => ov ? { ...ov, leads: ov.leads.filter((x) => x.leadPrimeId !== lead.leadPrimeId) } : ov);
+      await fetchLeads();
+    } catch (err) {
+      console.error("Schedule failed:", err);
+      toast.error(err.message || "Failed to schedule next follow-up");
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  /* ── Bulk email (dummy — wire to your API) ── */
+  /* ── History ── */
+  const openHistory = async (lead) => {
+    setHistLead(lead);
+    setHistLoading(true);
+    try {
+      const data = await apiGet(`/history/${lead.leadPrimeId}/followup`);
+      setHistData(data);
+    } catch (err) {
+      console.error("History fetch failed:", err);
+      toast.error("Failed to load history");
+      setHistData([]);
+    } finally {
+      setHistLoading(false);
+    }
+  };
+
+  /* ── Doc view ── */
+  const openDoc = (lead) => {
+    if (!lead.docFileUrl) {
+      toast.info("No document uploaded for this lead");
+      return;
+    }
+    window.open(`${FILE_ORIGIN}${lead.docFileUrl}`, "_blank", "noopener,noreferrer");
+  };
+
+  /* ── Convert + celebration (confetti + clap sound) ── */
+  const handleConvertConfirm = async (lead) => {
+    setBusyId(lead.leadPrimeId);
+    try {
+      const res = await fetch(`${API_BASE}/convert/${lead.leadPrimeId}`, { method: "PATCH" });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+
+      setConvertLead(null);
+
+      // confetti burst
+      confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+      setTimeout(() => confetti({ particleCount: 60, angle: 60, spread: 70, origin: { x: 0 } }), 200);
+      setTimeout(() => confetti({ particleCount: 60, angle: 120, spread: 70, origin: { x: 1 } }), 200);
+
+      // clap sound
+      try {
+        const audio = new Audio(CLAP_SOUND_URL);
+        audio.volume = 0.6;
+        audio.play().catch((e) => console.warn("Clap sound blocked by browser autoplay policy:", e));
+      } catch (e) {
+        console.warn("Clap sound failed to load:", e);
+      }
+
+      setCelebrate(`${lead.firstName} ${lead.lastName}`);
+      setTimeout(() => setCelebrate(null), 2600);
+      await fetchLeads();
+    } catch (err) {
+      console.error("Convert failed:", err);
+      toast.error(err.message || "Failed to convert lead");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /* ── Bulk email (dummy — untouched) ── */
   const handleBulkSend = (template) => {
-    const recipients = leads.filter((l) => selected.includes(l.id)).map((l) => l.email);
-    // TODO: replace with your real bulk-email API call, e.g.
-    // await api.post('/leads/bulk-email', { template, leadIds: selected })
+    const recipients = visibleLeads.filter((l) => selected.includes(l.leadPrimeId)).map((l) => l.email);
     console.log("Sending", template, "to", recipients);
     toast.success(`"${template.replace("_"," ")}" email queued for ${recipients.length} lead(s).`);
     setBulkEmailOpen(false);
@@ -943,7 +1291,7 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
 
   /* ── Export to Excel ── */
   const handleExport = ({ from, to, month }) => {
-    let rows = leads.filter((l) => stFilter === "all" || l.status === stFilter);
+    let rows = visibleLeads.filter((l) => stFilter === "all" || l.status === stFilter);
     if (month) {
       rows = rows.filter((l) => l.followUpDate && l.followUpDate.startsWith(month));
     } else if (from || to) {
@@ -959,7 +1307,6 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
       "Company": l.company || "", "Requirement": l.requirementCategory || "",
       "Status": STATUS_CFG[l.status]?.label || l.status, "Priority": l.priority,
       "Follow-up Date": fmtDate(l.followUpDate), "Follow-up Status": l.followupStatus === "done" ? "Done" : "Pending",
-      "Outcome": l.outcome || "-",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -974,6 +1321,10 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
   const nextMonth = () => setActiveYM(({year,month}) => month===11 ? {year:year+1,month:0} : {year,month:month+1});
 
   const todayKey = toKey(today);
+  const selectedLeadsForWA = useMemo(
+    () => visibleLeads.filter((l) => selected.includes(l.leadPrimeId)),
+    [visibleLeads, selected]
+  );
 
   return (
     <div className="root-dashboard">
@@ -982,6 +1333,7 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
         <div className="nav-brand">
           <span className="font-mono text-sm font-thin text-gray-600">Hey! Let's make it happen :)</span>
         </div>
+        <button className="btn-save" onClick={() => setAddingNew(true)}>+ Add Lead</button>
       </nav>
 
       <div className="dash-body">
@@ -1005,11 +1357,12 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
             <div className="cal-upcoming">
               <p className="up-heading">UPCOMING EVENTS</p>
               <div className="up-list">
-                {upcoming.length===0 && <p className="up-empty">No upcoming follow-ups</p>}
+                {loading && <p className="up-empty">Loading…</p>}
+                {!loading && upcoming.length===0 && <p className="up-empty">No upcoming follow-ups</p>}
                 {upcoming.map((lead) => {
                   const isToday = lead.followUpDate === todayKey;
                   return (
-                    <div key={lead.id} className={`up-card ${isToday?"up-card-today":""}`} onClick={() => setViewLead(lead)}>
+                    <div key={lead.leadPrimeId} className={`up-card ${isToday?"up-card-today":""}`} onClick={() => setViewLead(lead)}>
                       {isToday && <span className="up-today-tag">TODAY</span>}
                       <div className="up-row">
                         <span className="up-name">{lead.firstName} {lead.lastName}</span>
@@ -1057,7 +1410,7 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
           <div className="tbl-top">
             <div>
               <h2 className="tbl-title">Lead Pipeline</h2>
-              <p className="tbl-sub">{filtered.length} lead{filtered.length!==1?"s":""}</p>
+              <p className="tbl-sub">{activeList.length} lead{activeList.length!==1?"s":""}</p>
             </div>
             <div className="tbl-bulk">
               <button className="btn-export" onClick={() => setExportOpen(true)}>
@@ -1069,9 +1422,22 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
                   <button className="btn-bulk-email" onClick={() => setBulkEmailOpen(true)}>
                     <Mail size={14} /> Email ({selected.length})
                   </button>
+                  <button className="btn-bulk-whatsapp" onClick={() => setBulkWhatsAppOpen(true)}>
+                    <MessageCircle size={14} /> WhatsApp ({selected.length})
+                  </button>
                 </>
               )}
             </div>
+          </div>
+
+          {/* Sub-tabs */}
+          <div className="lead-subtabs">
+            <button className={`subtab-btn ${activeTab==="pipeline"?"active":""}`} onClick={() => { setActiveTab("pipeline"); setSelected([]); }}>
+              All Leads
+            </button>
+            <button className={`subtab-btn ${activeTab==="nextFollowups"?"active":""}`} onClick={() => { setActiveTab("nextFollowups"); setSelected([]); }}>
+              Next Follow-ups {nextFollowupLeads.length > 0 && <span className="subtab-badge">{nextFollowupLeads.length}</span>}
+            </button>
           </div>
 
           <div className="tbl-filters">
@@ -1094,18 +1460,25 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
                 <tr>
                   <th><input type="checkbox" className="chk" checked={allCheck} onChange={toggleAll}/></th>
                   <th>Name</th><th>Company</th><th>Email</th><th>Phone</th>
-                  <th>Status</th><th>Priority</th><th>Follow-up</th><th>Actions</th>
+                  <th>Status</th><th>Priority</th><th>Follow-up</th>
+                  {activeTab==="nextFollowups" && <th>Total Follow-ups</th>}
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.length===0 && (
-                  <tr><td colSpan={9} className="tbl-empty">No leads found — click any calendar date to view follow-ups.</td></tr>
+                {loading && (
+                  <tr><td colSpan={9} className="tbl-empty"><Loader2 size={16} className="spin" /> Loading leads…</td></tr>
                 )}
-                {filtered.map((lead) => {
+                {!loading && activeList.length===0 && (
+                  <tr><td colSpan={9} className="tbl-empty">
+                    {activeTab === "pipeline" ? "No leads found — click any calendar date to view follow-ups." : "No leads with multiple follow-ups yet."}
+                  </td></tr>
+                )}
+                {!loading && activeList.map((lead) => {
                   const isFollowToday = lead.followUpDate === todayKey;
                   return (
-                    <tr key={lead.id} className={`tbl-row tbl-${lead.status} ${selected.includes(lead.id)?"tbl-sel":""}`}>
-                      <td><input type="checkbox" className="chk" checked={selected.includes(lead.id)} onChange={()=>toggleOne(lead.id)}/></td>
+                    <tr key={lead.leadPrimeId} className={`tbl-row tbl-${lead.status} ${selected.includes(lead.leadPrimeId)?"tbl-sel":""}`}>
+                      <td><input type="checkbox" className="chk" checked={selected.includes(lead.leadPrimeId)} onChange={()=>toggleOne(lead.leadPrimeId)}/></td>
                       <td className="td-name">{lead.firstName} {lead.lastName}</td>
                       <td className="td-co">{lead.company||"—"}</td>
                       <td className="td-email">{lead.email}</td>
@@ -1117,13 +1490,15 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
                           {fmtDate(lead.followUpDate)}{isFollowToday && <span className="fu-dot"/>}
                         </span>
                       </td>
+                      {activeTab==="nextFollowups" && <td>{lead.followupCount || 0}</td>}
                       <td>
-                        <div className="act-row">
-                          <button className="act-btn act-v" onClick={()=>setViewLead(lead)} title="View"><Eye size={15}/></button>
-                          <button className="act-btn act-e" onClick={()=>setEditLead(lead)}  title="Edit"><Pencil size={15}/></button>
-                          <button className="act-btn act-convert" onClick={()=>setConvertLead(lead)} title="Convert"><Handshake size={15}/></button>
-                          <button className="act-btn act-d" onClick={()=>delOne(lead.id)}    title="Delete">🗑</button>
-                        </div>
+                        <ActionRow
+                          lead={lead} busyId={busyId}
+                          onView={setViewLead} onEdit={setEditLead}
+                          onDone={setDoneLead} onNextFollowup={setNextLead}
+                          onHistory={openHistory} onDoc={openDoc}
+                          onConvert={setConvertLead} onDelete={delOne}
+                        />
                       </td>
                     </tr>
                   );
@@ -1139,30 +1514,40 @@ const delOne = (id) => setDeleteTarget({ type: "one", id });
         <DayLeadsOverlay
           date={dayOverlay.date}
           leads={dayOverlay.leads}
+          busyId={busyId}
           onClose={() => setDayOverlay(null)}
           onView={setViewLead}
           onEdit={setEditLead}
           onDone={setDoneLead}
           onNextFollowup={setNextLead}
-          onHistory={setHistLead}
+          onHistory={openHistory}
+          onDoc={openDoc}
         />
       )}
-      {editLead   && <LeadFormModal lead={editLead} onClose={() => setEditLead(null)} onSave={handleSave} />}
-      {viewLead   && <LeadDetailOverlay lead={viewLead} onClose={() => setViewLead(null)} />}
-      {doneLead   && <DoneOverlay lead={doneLead} onClose={() => setDoneLead(null)} onSubmit={handleDoneSubmit} />}
-      {nextLead   && <NextFollowupOverlay lead={nextLead} onClose={() => setNextLead(null)} onSubmit={handleNextFollowupSubmit} />}
-      {histLead   && <HistoryOverlay lead={histLead} onClose={() => setHistLead(null)} />}
-      {convertLead&& <ConvertOverlay lead={convertLead} onClose={() => setConvertLead(null)} onConfirm={handleConvertConfirm} />}
+      {(editLead || addingNew) && (
+        <LeadFormModal
+          lead={editLead}
+          saving={busyId !== null}
+          onClose={() => { setEditLead(null); setAddingNew(false); }}
+          onSave={handleSave}
+        />
+      )}
+      {viewLead    && <LeadDetailOverlay lead={viewLead} onClose={() => setViewLead(null)} onDoc={openDoc} />}
+      {doneLead    && <DoneOverlay lead={doneLead} saving={busyId === doneLead.leadPrimeId} onClose={() => setDoneLead(null)} onSubmit={handleDoneSubmit} />}
+      {nextLead    && <NextFollowupOverlay lead={nextLead} saving={busyId === nextLead.leadPrimeId} onClose={() => setNextLead(null)} onSubmit={handleNextFollowupSubmit} />}
+      {histLead    && <HistoryOverlay lead={histLead} history={histData} loading={histLoading} onClose={() => { setHistLead(null); setHistData([]); }} />}
+      {convertLead && <ConvertOverlay lead={convertLead} saving={busyId === convertLead.leadPrimeId} onClose={() => setConvertLead(null)} onConfirm={handleConvertConfirm} />}
       {deleteTarget && (
         <DeleteConfirmOverlay
           label={deleteTarget.type === "one" ? "Delete this lead?" : `Delete ${selected.length} leads?`}
+          saving={busyId === -1}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={confirmDelete}
         />
       )}
-      {celebrate  && <CelebrationOverlay name={celebrate} />}
-      {bulkEmailOpen && <BulkEmailOverlay count={selected.length} onClose={() => setBulkEmailOpen(false)} onSend={handleBulkSend} />}
-      {exportOpen && <ExportOverlay statusFilter={stFilter} onClose={() => setExportOpen(false)} onExport={handleExport} />}
+      {celebrate       && <CelebrationOverlay name={celebrate} />}
+      {bulkEmailOpen    && <BulkEmailOverlay count={selected.length} onClose={() => setBulkEmailOpen(false)} onSend={handleBulkSend} />}
+      {bulkWhatsAppOpen && <BulkWhatsAppOverlay key={selectedLeadsForWA.map(l=>l.leadPrimeId).join(",")} leads={selectedLeadsForWA} onClose={() => setBulkWhatsAppOpen(false)} />}      {exportOpen       && <ExportOverlay statusFilter={stFilter} onClose={() => setExportOpen(false)} onExport={handleExport} />}
     </div>
   );
 };

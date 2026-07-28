@@ -9,7 +9,19 @@ import AddLead from "./components/Lead-Form/AddLead.jsx";
 import Invoice from "./components/Invoice/Invoice.jsx";
 import ClientList from "./components/Client-List/ClientList.jsx";
 import WFormatter from "./components/W-Formatter/WFormatter.jsx";
+import LoginForm from "./components/Login-Form/LoginForm.jsx";
 
+/* ─────────────────────────────────────────────────────────────
+   AUTH GUARD — dummy session check for now.
+   Swap isAuthed() with a real token/session check once the
+   backend auth API is wired.
+───────────────────────────────────────────────────────────── */
+const isAuthed = () => sessionStorage.getItem("kunash_auth") === "true";
+
+const ProtectedRoute = ({ children }) => {
+  if (!isAuthed()) return <Navigate to="/login" replace />;
+  return children;
+};
 
 /* ─────────────────────────────────────────────────────────────
    PLACEHOLDER — swap each one for the real component once built
@@ -55,17 +67,19 @@ function App() {
   <>
     <ToastContainer position="top-right" autoClose={3000} />
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to={isAuthed() ? "/dashboard" : "/login"} replace />} />
 
-      <Route path="/dashboard" element={<AppLayout><Dashboard /></AppLayout>} />
-      <Route path="/leads/add" element={<AppLayout><AddLead /></AppLayout>} />
-      <Route path="/clients" element={<AppLayout><ClientList /></AppLayout>} />
-      <Route path="/invoices" element={<AppLayout><Invoice /></AppLayout>} />
-      <Route path="/reports" element={<AppLayout><ComingSoon title="Reports" /></AppLayout>} />
-      <Route path="/settings" element={<AppLayout><ComingSoon title="Settings" /></AppLayout>} />
-      <Route path="/w-formatter" element={<AppLayout><WFormatter title="W-formatter" /></AppLayout>} />
+      <Route path="/login" element={<LoginForm />} />
 
-      <Route path="*" element={<AppLayout><ComingSoon title="Page Not Found" /></AppLayout>} />
+      <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
+      <Route path="/leads/add" element={<ProtectedRoute><AppLayout><AddLead /></AppLayout></ProtectedRoute>} />
+      <Route path="/clients" element={<ProtectedRoute><AppLayout><ClientList /></AppLayout></ProtectedRoute>} />
+      <Route path="/invoices" element={<ProtectedRoute><AppLayout><Invoice /></AppLayout></ProtectedRoute>} />
+      <Route path="/reports" element={<ProtectedRoute><AppLayout><ComingSoon title="Reports" /></AppLayout></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><AppLayout><ComingSoon title="Settings" /></AppLayout></ProtectedRoute>} />
+      <Route path="/w-formatter" element={<ProtectedRoute><AppLayout><WFormatter title="W-formatter" /></AppLayout></ProtectedRoute>} />
+
+      <Route path="*" element={<ProtectedRoute><AppLayout><ComingSoon title="Page Not Found" /></AppLayout></ProtectedRoute>} />
     </Routes>
   </>
   );

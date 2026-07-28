@@ -91,7 +91,7 @@ const AsideBar = () => {
         </div>
         {!collapsed && (
           <div className="aside-brand-text">
-            <sub className="aside-brand-tag ">CRM</sub>
+            <sub className="aside-brand-tag">CRM</sub>
             <span className="aside-brand-name">Kunash Media</span>
           </div>
         )}

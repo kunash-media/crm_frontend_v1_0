@@ -38,7 +38,7 @@ const LoginForm = () => {
     setTimeout(() => {
       if (mobile === DUMMY_MOBILE && password === DUMMY_PASSWORD) {
         sessionStorage.setItem("kunash_auth", "true");
-        toast.success("Welcome back! Redirecting to dashboard…");
+        toast.success("Login Successfully!");
         navigate("/dashboard", { replace: true });
       } else {
         toast.error("Invalid mobile number or password");

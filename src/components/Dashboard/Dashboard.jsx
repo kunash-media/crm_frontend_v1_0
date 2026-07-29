@@ -187,21 +187,21 @@ const WA_TEMPLATES = {
     build: (lead) =>
       `Hi ${lead.firstName || "there"}, this is a quick follow-up regarding your requirement for *${lead.requirementCategory || "our services"}*. ` +
       `We'd love to help you move forward — let us know a good time to connect.\n\n` +
-      `Best regards,\nTeam Kunash 🙂`,
+      `Best regards,\nTeam Kunash`,
   },
   meeting_reminder: {
     label: "Meeting Reminder",
     build: (lead) =>
       `Hi ${lead.firstName || "there"}, just a friendly reminder about our upcoming meeting regarding *${lead.requirementCategory || "your requirement"}*. ` +
       `Please let us know if the scheduled time still works for you.\n\n` +
-      `Best regards,\nTeam Kunash 🙂`,
+      `Best regards,\nTeam Kunash`,
   },
   payment_reminder: {
     label: "Payment Reminder",
     build: (lead) =>
       `Hi ${lead.firstName || "there"}, this is a gentle reminder regarding the pending payment for *${lead.requirementCategory || "your project"}*. ` +
       `Kindly complete the remaining payment at your earliest convenience so we can continue without delays.\n\n` +
-      `Best regards,\nTeam Kunash 🙂`,
+      `Best regards,\nTeam Kunash`,
   },
 };
 /* build 42-cell calendar grid */
@@ -749,25 +749,85 @@ const LeadFormModal = ({ date, lead, onClose, onSave, saving }) => {
 };
 
 /* ── OVERLAY: Convert ── */
-const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => (
-  <OverlayShell onClose={onClose}>
-    <div className="mo-head">
-      <div><p className="mo-sub">CONVERT LEAD</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
-      <button className="mo-x" onClick={onClose}><X size={16} /></button>
-    </div>
-    <div className="mo-body convert-body">
-      <Handshake size={40} strokeWidth={1.5} className="convert-icon" />
-      <p className="convert-msg">Mark this lead as a closed, won deal?</p>
-    </div>
-    <div className="mo-foot">
-      <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
-      <button className="btn-save btn-convert" onClick={() => onConfirm(lead)} disabled={saving}>
-        {saving ? <Loader2 size={15} className="spin" /> : "Deal Done! 🎉"}
-      </button>
-    </div>
-  </OverlayShell>
-);
+/* ── OVERLAY: Convert ── */
+const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => {
+  const [totalAmount, setTotalAmount] = useState("");
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [errs, setErrs] = useState({});
 
+  const handleTotalChange = (v) => {
+    setTotalAmount(v);
+    // auto-suggest 60% advance; user can still overwrite it manually after
+    const n = parseFloat(v);
+    if (!Number.isNaN(n) && n > 0) {
+      setAdvanceAmount(String(Math.round(n * 0.6)));
+    }
+    setErrs((e) => ({ ...e, totalAmount: undefined }));
+  };
+
+  const validate = () => {
+    const e = {};
+    const total = parseFloat(totalAmount);
+    const advance = parseFloat(advanceAmount);
+    if (!totalAmount || Number.isNaN(total) || total <= 0) e.totalAmount = "Enter a valid total amount";
+    if (!advanceAmount || Number.isNaN(advance) || advance < 0) e.advanceAmount = "Enter a valid advance amount";
+    if (!e.advanceAmount && !e.totalAmount && advance > total) e.advanceAmount = "Advance can't exceed total";
+    return e;
+  };
+
+  const submit = () => {
+    const e = validate();
+    if (Object.keys(e).length) { setErrs(e); return; }
+    onConfirm(lead, { totalAmount: parseFloat(totalAmount), advanceAmount: parseFloat(advanceAmount) });
+  };
+
+  return (
+    <OverlayShell onClose={onClose}>
+      <div className="mo-head">
+        <div><p className="mo-sub">CONVERT LEAD</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <div className="convert-body" style={{ paddingBottom: 8 }}>
+          <Handshake size={40} strokeWidth={1.5} className="convert-icon" />
+          <p className="convert-msg">Mark this lead as a closed, won deal?</p>
+        </div>
+        <div className="fg-grid">
+          <div className="fg">
+            <label>Total Amount *</label>
+            <input
+              type="number"
+              placeholder="e.g. 85000"
+              value={totalAmount}
+              className={errs.totalAmount ? "fe" : ""}
+              disabled={saving}
+              onChange={(e) => handleTotalChange(e.target.value)}
+            />
+            {errs.totalAmount && <span className="fe-msg">{errs.totalAmount}</span>}
+          </div>
+          <div className="fg">
+            <label>Advance Amount (60%)</label>
+            <input
+              type="number"
+              placeholder="e.g. 51000"
+              value={advanceAmount}
+              className={errs.advanceAmount ? "fe" : ""}
+              disabled={saving}
+              onChange={(e) => { setAdvanceAmount(e.target.value); setErrs((er) => ({ ...er, advanceAmount: undefined })); }}
+            />
+            {errs.advanceAmount && <span className="fe-msg">{errs.advanceAmount}</span>}
+          </div>
+        </div>
+      </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn-save btn-convert" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : "Deal Done! 🎉"}
+        </button>
+      </div>
+    </OverlayShell>
+  );
+};
 /* ── OVERLAY: Confirm delete ── */
 const DeleteConfirmOverlay = ({ label, onCancel, onConfirm, saving }) => (
   <OverlayShell onClose={onCancel}>
@@ -826,28 +886,188 @@ const BulkEmailOverlay = ({ count, onClose, onSend }) => (
   </OverlayShell>
 );
 
-/* ── OVERLAY: Bulk WhatsApp forward ── */
+/* ── OVERLAY: Bulk WhatsApp forward — pick a template first, then send ── */
+// const BulkWhatsAppOverlay = ({ leads, onClose }) => {
+//   const [template, setTemplate] = useState(null); // null = still choosing
+//   const [sentIds, setSentIds] = useState([]);
+
+//   const sendOne = (lead) => {
+//     const phoneDigits = (lead.phone || "").replace(/\D/g, "");
+//     if (phoneDigits.length < 10) {
+//       toast.error(`${lead.firstName} has no valid phone number`);
+//       return;
+//     }
+//     const waPhone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+//     const msg = WA_TEMPLATES[template].build(lead);
+//     window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+//     setSentIds((p) => [...p, lead.leadPrimeId]);
+//   };
+
+//   const sendAll = () => {
+//     leads.forEach((lead, idx) => {
+//       setTimeout(() => sendOne(lead), idx * 400); // stagger to reduce popup-blocking
+//     });
+//   };
+
+//   // Step 1 — template selection (must pick before any send is possible)
+//   if (!template) {
+//     return (
+//       <OverlayShell onClose={onClose}>
+//         <div className="mo-head">
+//           <div><p className="mo-sub">SELECT TEMPLATE</p><h2 className="mo-title">{leads.length} lead{leads.length!==1?"s":""} selected</h2></div>
+//           <button className="mo-x" onClick={onClose}><X size={16} /></button>
+//         </div>
+//         <div className="mo-body">
+//           <p className="email-hint">Choose a WhatsApp message template to send to all selected leads:</p>
+//           <div className="email-tpl-row">
+//             <button className="email-tpl-btn" onClick={() => setTemplate("followup")}>
+//               <MessageSquareText size={20} /><span>Follow-up</span>
+//             </button>
+//             <button className="email-tpl-btn" onClick={() => setTemplate("meeting_reminder")}>
+//               <CalendarCheck2 size={20} /><span>Meeting Reminder</span>
+//             </button>
+//             <button className="email-tpl-btn" onClick={() => setTemplate("payment_reminder")}>
+//               <BellRing size={20} /><span>Payment Reminder</span>
+//             </button>
+//           </div>
+//         </div>
+//         <div className="mo-foot"><button className="btn-cancel" onClick={onClose}>Cancel</button></div>
+//       </OverlayShell>
+//     );
+//   }
+
+//   // Step 2 — preview + per-lead / bulk send, now that a template is locked in
+//   return (
+//     <OverlayShell onClose={onClose} className="mo-wide">
+//       <div className="mo-head">
+//         <div>
+//           <p className="mo-sub">FORWARD WHATSAPP — {WA_TEMPLATES[template].label.toUpperCase()}</p>
+//           <h2 className="mo-title">{leads.length} lead{leads.length!==1?"s":""} selected</h2>
+//         </div>
+//         <button className="mo-x" onClick={onClose}><X size={16} /></button>
+//       </div>
+//       <div className="mo-body">
+//         <p className="email-hint">
+//           Opens WhatsApp Web/App with a pre-filled "{WA_TEMPLATES[template].label}" message for each contact. Each tab needs to be sent manually inside WhatsApp.
+//         </p>
+//         <button className="wa-change-tpl" onClick={() => { setTemplate(null); setSentIds([]); }}>
+//           ← Change template
+//         </button>
+//         <div className="wa-lead-list">
+//           {leads.map((lead) => (
+//             <div key={lead.leadPrimeId} className="wa-lead-row">
+//               <div className="wa-lead-info">
+//                 <span className="wa-lead-name">{lead.firstName} {lead.lastName}</span>
+//                 <span className="wa-lead-phone">{lead.phone || "—"}</span>
+//                 <span className="wa-lead-req">{lead.requirementCategory || "—"}</span>
+//               </div>
+//               <button
+//                 className={`act-btn act-wa ${sentIds.includes(lead.leadPrimeId) ? "act-wa-sent" : ""}`}
+//                 onClick={() => sendOne(lead)}
+//                 title="Open in WhatsApp"
+//               >
+//                 {sentIds.includes(lead.leadPrimeId) ? <CheckCircle2 size={15} /> : <Send size={15} />}
+//               </button>
+//             </div>
+//           ))}
+//         </div>
+//       </div>
+//       <div className="mo-foot">
+//         <button className="btn-cancel" onClick={onClose}>Close</button>
+//         <button className="btn-save" onClick={sendAll}>
+//            Send All
+//         </button>
+//       </div>
+//     </OverlayShell>
+//   );
+// };
+
+
+
+const CALENDAR_API_BASE = "http://localhost:9090/api/calendar/v1";
+
+/* Calls the backend, which creates a real Google Calendar event with Meet
+   conferencing attached (via the connected Google account) and returns the
+   actual meet.google.com/xxx-xxxx-xxx join link. */
+async function fetchMeetLink(lead, dateStr, timeStr) {
+  const res = await fetch(`${CALENDAR_API_BASE}/schedule-meeting`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      leadFirstName: lead.firstName,
+      leadLastName: lead.lastName,
+      requirementCategory: lead.requirementCategory,
+      meetingDate: dateStr,
+      meetingTime: timeStr,
+      durationMinutes: 30,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Failed to schedule meeting (${res.status})`);
+  }
+  const data = await res.json();
+  return data.meetLink;
+}
+
+/* ── OVERLAY: Bulk WhatsApp forward — pick a template first, then send ── */
 /* ── OVERLAY: Bulk WhatsApp forward — pick a template first, then send ── */
 const BulkWhatsAppOverlay = ({ leads, onClose }) => {
   const [template, setTemplate] = useState(null); // null = still choosing
   const [sentIds, setSentIds] = useState([]);
+  const [meetDate, setMeetDate] = useState("");
+  const [meetTime, setMeetTime] = useState("");
+  const [sendingId, setSendingId] = useState(null); // leadPrimeId currently generating a Meet link
 
-  const sendOne = (lead) => {
+  const isMeeting = template === "meeting_reminder";
+  const meetDetailsReady = !isMeeting || (meetDate && meetTime);
+
+  const sendOne = async (lead) => {
     const phoneDigits = (lead.phone || "").replace(/\D/g, "");
     if (phoneDigits.length < 10) {
       toast.error(`${lead.firstName} has no valid phone number`);
       return;
     }
-    const waPhone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
-    const msg = WA_TEMPLATES[template].build(lead);
-    window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
-    setSentIds((p) => [...p, lead.leadPrimeId]);
+    if (isMeeting && !meetDetailsReady) {
+      toast.error("Pick a meeting date and time first");
+      return;
+    }
+
+    setSendingId(lead.leadPrimeId);
+    try {
+      let msg = WA_TEMPLATES[template].build(lead);
+
+      if (isMeeting) {
+        const meetLink = await fetchMeetLink(lead, meetDate, meetTime);
+        const whenText = new Date(`${meetDate}T${meetTime}`).toLocaleString("en-IN", {
+          day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+        });
+        msg = `${msg}\n\nScheduled for: ${whenText}\nJoin here: ${meetLink}`;
+      }
+
+      const waPhone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
+      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
+      setSentIds((p) => [...p, lead.leadPrimeId]);
+    } catch (err) {
+      console.error("Failed to prepare WhatsApp message:", err);
+      toast.error(err.message || `Failed to schedule meeting for ${lead.firstName}`);
+    } finally {
+      setSendingId(null);
+    }
   };
 
-  const sendAll = () => {
-    leads.forEach((lead, idx) => {
-      setTimeout(() => sendOne(lead), idx * 400); // stagger to reduce popup-blocking
-    });
+  const sendAll = async () => {
+    if (isMeeting && !meetDetailsReady) {
+      toast.error("Pick a meeting date and time first");
+      return;
+    }
+    // sequential (not parallel) — each Meet event is a separate Calendar API call,
+    // and staggering keeps the browser from blocking multiple wa.me popups at once
+    for (const lead of leads) {
+      if (sentIds.includes(lead.leadPrimeId)) continue;
+      await sendOne(lead);
+      await new Promise((r) => setTimeout(r, 400));
+    }
   };
 
   // Step 1 — template selection (must pick before any send is possible)
@@ -891,9 +1111,26 @@ const BulkWhatsAppOverlay = ({ leads, onClose }) => {
         <p className="email-hint">
           Opens WhatsApp Web/App with a pre-filled "{WA_TEMPLATES[template].label}" message for each contact. Each tab needs to be sent manually inside WhatsApp.
         </p>
-        <button className="wa-change-tpl" onClick={() => { setTemplate(null); setSentIds([]); }}>
+        <button className="wa-change-tpl" onClick={() => { setTemplate(null); setSentIds([]); setMeetDate(""); setMeetTime(""); }}>
           ← Change template
         </button>
+
+        {isMeeting && (
+          <div className="wa-meet-picker">
+            <div className="fg">
+              <label>Meeting Date *</label>
+              <input type="date" value={meetDate} onChange={(e) => setMeetDate(e.target.value)} />
+            </div>
+            <div className="fg">
+              <label>Meeting Time *</label>
+              <input type="time" value={meetTime} onChange={(e) => setMeetTime(e.target.value)} />
+            </div>
+              <p className="wa-meet-note">
+              A real Google Meet link is generated automatically for each lead and appended to the message — no extra steps needed on their end.
+            </p>
+          </div>
+        )}
+
         <div className="wa-lead-list">
           {leads.map((lead) => (
             <div key={lead.leadPrimeId} className="wa-lead-row">
@@ -906,17 +1143,23 @@ const BulkWhatsAppOverlay = ({ leads, onClose }) => {
                 className={`act-btn act-wa ${sentIds.includes(lead.leadPrimeId) ? "act-wa-sent" : ""}`}
                 onClick={() => sendOne(lead)}
                 title="Open in WhatsApp"
+                disabled={(isMeeting && !meetDetailsReady) || sendingId === lead.leadPrimeId}
               >
-                {sentIds.includes(lead.leadPrimeId) ? <CheckCircle2 size={15} /> : <Send size={15} />}
+                {sendingId === lead.leadPrimeId ? <Loader2 size={15} className="spin" />
+                  : sentIds.includes(lead.leadPrimeId) ? <CheckCircle2 size={15} />
+                  : <Send size={15} />}
               </button>
             </div>
           ))}
         </div>
       </div>
-      <div className="mo-foot">
+       <div className="mo-foot">
         <button className="btn-cancel" onClick={onClose}>Close</button>
-        <button className="btn-save" onClick={sendAll}>
-          <MessageCircle size={15} style={{ marginRight: 6 }} /> Send All
+        <button className="flex gap-1 btn-save" onClick={sendAll} disabled={(isMeeting && !meetDetailsReady) || sendingId !== null}>
+          {sendingId !== null ? <Loader2 size={15} className="spin" style={{ marginRight: 6 }} /> : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12.04 2c-5.52 0-10 4.48-10 10 0 1.77.46 3.45 1.26 4.9L2 22l5.25-1.28A9.96 9.96 0 0 0 12.04 22c5.52 0 10-4.48 10-10s-4.48-10-10-10Zm0 18.2c-1.6 0-3.13-.43-4.46-1.24l-.32-.19-3.13.76.77-3.05-.21-.32A8.16 8.16 0 0 1 3.84 12c0-4.53 3.68-8.2 8.2-8.2 4.53 0 8.2 3.67 8.2 8.2 0 4.53-3.67 8.2-8.2 8.2Zm4.5-6.13c-.24-.12-1.44-.71-1.66-.79-.22-.08-.38-.12-.55.12-.16.24-.63.79-.77.95-.14.16-.28.18-.53.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.44-1.34-1.68-.14-.24-.02-.37.11-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.33-.76-1.82-.2-.48-.4-.42-.55-.42-.14 0-.3-.02-.46-.02-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.13 3.64.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1.47-.07 1.44-.59 1.64-1.16.2-.57.2-1.06.14-1.16-.06-.1-.22-.16-.46-.28Z"/>
+      </svg>}
+          Send All
         </button>
       </div>
     </OverlayShell>
@@ -949,8 +1192,8 @@ const ExportOverlay = ({ statusFilter, onClose, onExport }) => {
         </p>
       </div>
       <div className="mo-foot">
-        <button className="btn-cancel" onClick={onClose}>Cancel</button>
-        <button className="btn-save" onClick={() => onExport({ from, to, month })}>
+        <button className="btn-cancel-sheet" onClick={onClose}>Cancel</button>
+        <button className="btn-save-sheet" onClick={() => onExport({ from, to, month })}>
           <FileSpreadsheet size={15} style={{ marginRight: 6 }} /> Export
         </button>
       </div>
@@ -1049,22 +1292,23 @@ const Dashboard = () => {
     };
   }, []);
 
-  const monthlyTrend = useMemo(() => {
-    const buckets = {}; const labels = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-      buckets[key] = 0;
-      labels.push({ key, label: MONTH_NAMES[d.getMonth()].slice(0, 3) });
+   const [monthlyTrend, setMonthlyTrend] = useState([]);
+  const [monthlyTrendLoading, setMonthlyTrendLoading] = useState(true);
+
+  const fetchMonthlyTrend = useCallback(async () => {
+    setMonthlyTrendLoading(true);
+    try {
+      const data = await apiGet(`/monthly-count?monthsBack=6`);
+      setMonthlyTrend(data.map((d) => ({ key: d.monthKey, label: d.monthLabel, count: d.count })));
+    } catch (err) {
+      console.error("Failed to load monthly lead trend:", err);
+      toast.error("Failed to load monthly trend chart");
+    } finally {
+      setMonthlyTrendLoading(false);
     }
-    DUMMY_LEADS.forEach((l) => {
-      const d = new Date(l.createdAt);
-      const key = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-      if (key in buckets) buckets[key]++;
-    });
-    return labels.map((l) => ({ ...l, count: buckets[l.key] }));
   }, []);
 
+  useEffect(() => { fetchMonthlyTrend(); }, [fetchMonthlyTrend]);
   const workTypeDist = useMemo(() => {
     const counts = { static: 0, dynamic: 0, meta_ads: 0, campaign: 0 };
     DUMMY_LEADS.forEach((l) => { if (l.workType && counts[l.workType] !== undefined) counts[l.workType]++; });
@@ -1134,6 +1378,7 @@ const Dashboard = () => {
       } else {
         await apiSendLeadForm(``, "POST", payload, docFile);
         toast.success("Lead created");
+        fetchMonthlyTrend(); // new lead affects this month's count
       }
       await fetchLeads();
       setEditLead(null);
@@ -1248,11 +1493,20 @@ const Dashboard = () => {
   };
 
   /* ── Convert + celebration (confetti + clap sound) ── */
-  const handleConvertConfirm = async (lead) => {
+  const CLIENT_API_BASE = "http://localhost:9090/api/client/v1";
+
+  const handleConvertConfirm = async (lead, amounts) => {
     setBusyId(lead.leadPrimeId);
     try {
-      const res = await fetch(`${API_BASE}/convert/${lead.leadPrimeId}`, { method: "PATCH" });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      const res = await fetch(`${CLIENT_API_BASE}/convert-lead/${lead.leadPrimeId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(amounts),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Failed (${res.status})`);
+      }
 
       setConvertLead(null);
 
@@ -1398,7 +1652,11 @@ const Dashboard = () => {
         <section className="charts-row">
           <div className="chart-card">
             <p className="chart-title">Monthly Lead Trend</p>
-            <TrendBarChart data={monthlyTrend} />
+            {monthlyTrendLoading ? (
+              <div className="chart-loading"><Loader2 size={22} className="spin" /></div>
+            ) : (
+              <TrendBarChart data={monthlyTrend} />
+            )}
           </div>
           <div className="chart-card">
             <p className="chart-title">Working Category Distribution</p>
@@ -1423,7 +1681,9 @@ const Dashboard = () => {
                     <Mail size={14} /> Email ({selected.length})
                   </button>
                   <button className="btn-bulk-whatsapp" onClick={() => setBulkWhatsAppOpen(true)}>
-                    <MessageCircle size={14} /> WhatsApp ({selected.length})
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12.04 2c-5.52 0-10 4.48-10 10 0 1.77.46 3.45 1.26 4.9L2 22l5.25-1.28A9.96 9.96 0 0 0 12.04 22c5.52 0 10-4.48 10-10s-4.48-10-10-10Zm0 18.2c-1.6 0-3.13-.43-4.46-1.24l-.32-.19-3.13.76.77-3.05-.21-.32A8.16 8.16 0 0 1 3.84 12c0-4.53 3.68-8.2 8.2-8.2 4.53 0 8.2 3.67 8.2 8.2 0 4.53-3.67 8.2-8.2 8.2Zm4.5-6.13c-.24-.12-1.44-.71-1.66-.79-.22-.08-.38-.12-.55.12-.16.24-.63.79-.77.95-.14.16-.28.18-.53.06-.24-.12-1.02-.38-1.94-1.2-.72-.64-1.2-1.44-1.34-1.68-.14-.24-.02-.37.11-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.55-1.33-.76-1.82-.2-.48-.4-.42-.55-.42-.14 0-.3-.02-.46-.02-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.32.98 2.48c.12.16 1.7 2.6 4.13 3.64.58.25 1.03.4 1.38.51.58.18 1.11.16 1.53.1.47-.07 1.44-.59 1.64-1.16.2-.57.2-1.06.14-1.16-.06-.1-.22-.16-.46-.28Z"/>
+                  </svg> WhatsApp ({selected.length})
                   </button>
                 </>
               )}
@@ -1440,7 +1700,7 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div className="tbl-filters">
+           <div className="tbl-filters">
             <div className="srch-wrap">
               <span className="srch-ico">⌕</span>
               <input className="srch-input" placeholder="Search name, email, company…" value={search} onChange={(e)=>setSearch(e.target.value)} />
@@ -1452,6 +1712,13 @@ const Dashboard = () => {
                 </button>
               ))}
             </div>
+            <button
+              className="btn-reset-filters"
+              onClick={() => { setSearch(""); setStFilter("all"); setSelected([]); }}
+              disabled={!search && stFilter === "all" && selected.length === 0}
+            >
+              Reset
+            </button>
           </div>
 
           <div className="tbl-scroll">

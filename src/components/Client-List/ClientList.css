@@ -370,3 +370,9 @@
   .client-root .cl-section-row-label { width: 100%; }
   .client-root .cl-form-grid { grid-template-columns: 1fr; }
 }
+
+.client-root .cl-table-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}

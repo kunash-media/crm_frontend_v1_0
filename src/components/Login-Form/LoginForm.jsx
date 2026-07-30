@@ -84,7 +84,7 @@ const LoginForm = () => {
 
           <div className="lv-quote">
             <p>"Cut our follow-up misses to almost zero within a month."</p>
-            <span>— Sales Team, Kunash</span>
+            <span>— Kunash Media Solutions</span>
           </div>
         </div>
       </div>
@@ -149,10 +149,7 @@ const LoginForm = () => {
               {errs.password && <span className="lf-err-msg">{errs.password}</span>}
             </div>
 
-            <label className="lf-remember">
-              <input type="checkbox" />
-              <span>Keep me signed in</span>
-            </label>
+           
 
             <button type="submit" className="lf-submit" disabled={loading}>
               {loading ? <span className="lf-spinner" /> : (

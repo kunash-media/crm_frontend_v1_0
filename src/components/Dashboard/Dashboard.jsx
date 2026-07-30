@@ -17,6 +17,13 @@ import {
 
 const API_BASE = "http://localhost:9090/api/lead/v1";
 const FILE_ORIGIN = "http://localhost:9090";
+const STAT_API_BASE = "http://localhost:9090/api/stat/v1";
+
+async function apiGetAbsolute(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`GET ${url} failed (${res.status})`);
+  return res.json();
+}
 
 /* ─────────────────────────────────────────────────────────────
    CONSTANTS & HELPERS
@@ -486,6 +493,56 @@ const DoneOverlay = ({ lead, onClose, onSubmit, saving }) => {
   );
 };
 
+/* ── OVERLAY: Mark as lost ── */
+const LostOverlay = ({ lead, onClose, onSubmit, saving }) => {
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState("");
+  const submit = () => {
+    if (!reason.trim()) { setErr("Please add a reason before submitting"); return; }
+    onSubmit(lead, reason.trim());
+  };
+  return (
+    <OverlayShell onClose={onClose}>
+      <div className="mo-head">
+        <div><p className="mo-sub">MARK AS LOST</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+        <button className="mo-x" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="mo-body">
+        <div className="fg">
+          <label>Lost Reason *</label>
+          <textarea rows={4} placeholder="Why was this lead lost?"
+            value={reason} onChange={(e) => { setReason(e.target.value); setErr(""); }} className={err ? "fe" : ""} disabled={saving} />
+          {err && <span className="fe-msg">{err}</span>}
+        </div>
+      </div>
+      <div className="mo-foot">
+        <button className="btn-cancel" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="btn-save btn-delete" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : "Mark Lost"}
+        </button>
+      </div>
+    </OverlayShell>
+  );
+};
+
+const LostReasonOverlay = ({ lead, onClose, onRevert, saving }) => (
+  <OverlayShell onClose={onClose}>
+    <div className="mo-head">
+      <div><p className="mo-sub">LOST REASON</p><h2 className="mo-title">{lead.firstName} {lead.lastName}</h2></div>
+      <button className="mo-x" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="mo-body">
+      <p className="vg-val vg-notes">{lead.lostReason || "No reason recorded"}</p>
+    </div>
+    <div className="mo-foot">
+      <button className="btn-cancel" onClick={onClose} disabled={saving}>Close</button>
+      <button className="btn-save" onClick={() => onRevert(lead)} disabled={saving}>
+        {saving ? <Loader2 size={15} className="spin" /> : "Revert to Pipeline"}
+      </button>
+    </div>
+  </OverlayShell>
+);
+
 /* ── OVERLAY: Next follow-up ── */
 const NextFollowupOverlay = ({ lead, onClose, onSubmit, saving }) => {
   const [date, setDate] = useState("");
@@ -612,7 +669,40 @@ const LeadFormModal = ({ date, lead, onClose, onSave, saving }) => {
   const [errs, setErrs] = useState({});
   const [docFile, setDocFile] = useState(null);
   const [fileErr, setFileErr] = useState("");
+  const [phoneCheck, setPhoneCheck] = useState({ checking: false, exists: false, checked: false, leadPrimeId: null, leadStrId: null, firstName: null, lastName: null });
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    // Skip check if editing and phone hasn't changed from the lead's own number
+    if (lead && form.phone === lead.phone) {
+      setPhoneCheck({ checking: false, exists: false, checked: false, leadPrimeId: null, leadStrId: null, firstName: null, lastName: null });
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(form.phone)) {
+      setPhoneCheck({ checking: false, exists: false, checked: false, leadPrimeId: null, leadStrId: null, firstName: null, lastName: null });
+      return;
+    }
+    let active = true;
+    setPhoneCheck((p) => ({ ...p, checking: true }));
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/check-phone?phone=${form.phone}`);
+        const data = await res.json();
+        if (active) setPhoneCheck({
+          checking: false,
+          exists: !!data.exists,
+          checked: true,
+          leadPrimeId: data.leadPrimeId,
+          leadStrId: data.leadStrId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+        });
+      } catch {
+        if (active) setPhoneCheck({ checking: false, exists: false, checked: false, leadPrimeId: null, leadStrId: null, firstName: null, lastName: null });
+      }
+    }, 450);
+    return () => { active = false; clearTimeout(timer); };
+  }, [form.phone, lead]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -626,12 +716,15 @@ const LeadFormModal = ({ date, lead, onClose, onSave, saving }) => {
     setDocFile(file);
   };
 
-  const validate = () => {
+const validate = () => {
     const e = {};
     if (!form.firstName.trim()) e.firstName = "First name is required";
     if (!form.lastName.trim())  e.lastName  = "Last name is required";
     if (!/\S+@\S+\.\S+/.test(form.email)) e.email = "Valid email required";
     if (!/^[6-9]\d{9}$/.test((form.phone||"").replace(/\D/g,""))) e.phone = "Valid 10-digit mobile required";
+if (phoneCheck.checked && phoneCheck.exists) {
+      e.phone = `Already exists: ${phoneCheck.firstName || ""} ${phoneCheck.lastName || ""} (${phoneCheck.leadStrId || "ID " + phoneCheck.leadPrimeId})`;
+    }
     return e;
   };
 
@@ -672,7 +765,7 @@ const LeadFormModal = ({ date, lead, onClose, onSave, saving }) => {
             <input type="tel" value={form.phone} maxLength={10} placeholder="9876543210" className={errs.phone ? "fe" : ""} disabled={saving}
               onChange={(e) => set("phone", e.target.value.replace(/\D/g,"").slice(0,10))} />
             {errs.phone && <span className="fe-msg">{errs.phone}</span>}
-          </div>
+            {!errs.phone && phoneCheck.checking && <span className="fe-msg" style={{ color: "#b07850" }}>Checking…</span>}          </div>
           <div className="fg">
             <label>Company</label>
             <input value={form.company} placeholder="Acme Corp" disabled={saving} onChange={(e) => set("company", e.target.value)} />
@@ -1202,7 +1295,7 @@ const ExportOverlay = ({ statusFilter, onClose, onExport }) => {
 };
 
 /* ── Shared action-button row (used by both tabs) ── */
-const ActionRow = ({ lead, busyId, onView, onEdit, onDone, onNextFollowup, onHistory, onDoc, onConvert, onDelete }) => {
+const ActionRow = ({ lead, busyId, onView, onEdit, onDone, onNextFollowup, onHistory, onDoc, onConvert, onDelete, onLost }) => {
   const isBusy = busyId === lead.leadPrimeId;
   return (
     <div className="act-row">
@@ -1220,6 +1313,7 @@ const ActionRow = ({ lead, busyId, onView, onEdit, onDone, onNextFollowup, onHis
         {lead.docFileUrl ? <FileText size={15} /> : <FileX2 size={15} />}
       </button>
       {onConvert && <button className="act-btn act-convert" title="Convert" onClick={() => onConvert(lead)} disabled={isBusy}><Handshake size={15} /></button>}
+       {onLost && <button className="act-btn act-d" title="Mark lost" onClick={() => onLost(lead)} disabled={isBusy}><XCircle size={15} /></button>}
       {onDelete && <button className="act-btn act-d" title="Delete" onClick={() => onDelete(lead.leadPrimeId)} disabled={isBusy}>🗑</button>}
       {isBusy && <Loader2 size={14} className="spin" />}
     </div>
@@ -1246,7 +1340,10 @@ const Dashboard = () => {
   const [histLead,    setHistLead]    = useState(null);
   const [histData,    setHistData]    = useState([]);
   const [histLoading, setHistLoading] = useState(false);
-  const [convertLead, setConvertLead] = useState(null);
+ const [convertLead, setConvertLead] = useState(null);
+  const [lostLead,    setLostLead]    = useState(null);
+  const [viewLostReason, setViewLostReason] = useState(null);
+
   const [celebrate,   setCelebrate]   = useState(null);
 
   const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
@@ -1274,23 +1371,30 @@ const Dashboard = () => {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
-  const visibleLeads = useMemo(
-    () => leads.filter((l) => !l.leadConverted && !l.deletedLead),
+const visibleLeads = useMemo(
+    () => leads.filter((l) => !l.leadConverted && !l.deletedLead && l.leadOutcome !== "lost"),
     [leads]
   );
 
-  /* ── Stats + charts run off dummy data for now, independent of real leads ── */
-  const stats = useMemo(() => {
-    const todayKey = toKey(today);
-    return {
-      total: DUMMY_LEADS.length,
-      todayFollowups: DUMMY_LEADS.filter((l) => l.followUpDate === todayKey && l.followupStatus !== "done").length,
-      emailSent: DUMMY_LEADS.filter((l) => l.emailSent).length,
-      totalFollowups: DUMMY_LEADS.filter((l) => l.followUpDate).length,
-      won: DUMMY_LEADS.filter((l) => l.outcome === "won").length,
-      lost: DUMMY_LEADS.filter((l) => l.outcome === "lost").length,
-    };
+  const lostLeadsList = useMemo(
+    () => leads.filter((l) => !l.deletedLead && l.leadOutcome === "lost"),
+    [leads]
+  );
+ 
+  /* ── Stats — live from /api/stat/v1/lead-stats ── */
+  const [stats, setStats] = useState({ totalLeads: 0, todayFollowups: 0, totalFollowups: 0, won: 0, lost: 0 });
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await apiGetAbsolute(`${STAT_API_BASE}/lead-stats`);
+      setStats(data);
+    } catch (err) {
+      console.error("Failed to load stat cards:", err);
+      toast.error("Failed to load stat cards");
+    }
   }, []);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
    const [monthlyTrend, setMonthlyTrend] = useState([]);
   const [monthlyTrendLoading, setMonthlyTrendLoading] = useState(true);
@@ -1352,7 +1456,13 @@ const Dashboard = () => {
     ),
   [visibleLeads, stFilter, search]);
 
-  const activeList = activeTab === "pipeline" ? pipelineLeads : nextFollowupLeads;
+  const lostFilteredLeads = useMemo(() =>
+    lostLeadsList.filter((l) =>
+      [l.firstName, l.lastName, l.email, l.company || ""].some((f) => (f||"").toLowerCase().includes(search.toLowerCase()))
+    ),
+  [lostLeadsList, search]);
+
+const activeList = activeTab === "pipeline" ? pipelineLeads : activeTab === "nextFollowups" ? nextFollowupLeads : lostFilteredLeads;
 
   const visIds    = activeList.map((l) => l.leadPrimeId);
   const allCheck  = visIds.length > 0 && visIds.every((id) => selected.includes(id));
@@ -1360,6 +1470,7 @@ const Dashboard = () => {
     ? setSelected((p) => p.filter((id) => !visIds.includes(id)))
     : setSelected((p) => [...new Set([...p, ...visIds])]);
   const toggleOne = (id) => setSelected((p) => p.includes(id) ? p.filter((s) => s !== id) : [...p, id]);
+
 
   /* ── CRUD ── */
   const handleSave = async (form, isEdit, docFile) => {
@@ -1390,6 +1501,8 @@ const Dashboard = () => {
       setBusyId(null);
     }
   };
+
+
 
   const delOne = (id) => setDeleteTarget({ type: "one", id });
   const delBulk = () => { if (selected.length) setDeleteTarget({ type: "bulk" }); };
@@ -1535,6 +1648,54 @@ const Dashboard = () => {
     }
   };
 
+
+  const handleLostSubmit = async (lead, reason) => {
+    setBusyId(lead.leadPrimeId);
+    try {
+      const res = await fetch(`${API_BASE}/${lead.leadPrimeId}/outcome`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadOutcome: "lost", lostReason: reason }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Failed (${res.status})`);
+      }
+      toast.success("Lead marked as lost");
+      setLostLead(null);
+      await fetchLeads();
+      fetchStats();
+    } catch (err) {
+      console.error("Mark lost failed:", err);
+      toast.error(err.message || "Failed to mark lead as lost");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleRevertLost = async (lead) => {
+    setBusyId(lead.leadPrimeId);
+    try {
+      const res = await fetch(`${API_BASE}/${lead.leadPrimeId}/outcome`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadOutcome: "open" }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `Failed (${res.status})`);
+      }
+      toast.success("Lead restored to pipeline");
+      await fetchLeads();
+      fetchStats();
+    } catch (err) {
+      console.error("Revert failed:", err);
+      toast.error(err.message || "Failed to restore lead");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   /* ── Bulk email (dummy — untouched) ── */
   const handleBulkSend = (template) => {
     const recipients = visibleLeads.filter((l) => selected.includes(l.leadPrimeId)).map((l) => l.email);
@@ -1593,9 +1754,8 @@ const Dashboard = () => {
       <div className="dash-body">
 
         <section className="stats-row">
-          <StatCard label="Total Leads"      value={stats.total}          Icon={Users}         accent={{ bg:"rgba(249,115,22,.13)", color:"#ea580c" }} />
+          <StatCard label="Total Leads"      value={stats.totalLeads}     Icon={Users}         accent={{ bg:"rgba(249,115,22,.13)", color:"#ea580c" }} />
           <StatCard label="Today Follow-ups" value={stats.todayFollowups} Icon={CalendarClock} accent={{ bg:"rgba(239,68,68,.13)",  color:"#ef4444" }} />
-          <StatCard label="WhatsApp"         value={stats.emailSent}      Icon={Mail}          accent={{ bg:"rgba(59,130,246,.13)", color:"#3b82f6" }} />
           <StatCard label="Total Follow-ups" value={stats.totalFollowups} Icon={Repeat}        accent={{ bg:"rgba(245,158,11,.13)", color:"#f59e0b" }} />
           <StatCard label="Won"              value={stats.won}            Icon={CheckCircle2}  accent={{ bg:"rgba(34,197,94,.13)",  color:"#16a34a" }} />
           <StatCard label="Lost Leads"       value={stats.lost}           Icon={XCircle}       accent={{ bg:"rgba(107,114,128,.13)",color:"#6b7280" }} />
@@ -1698,6 +1858,9 @@ const Dashboard = () => {
             <button className={`subtab-btn ${activeTab==="nextFollowups"?"active":""}`} onClick={() => { setActiveTab("nextFollowups"); setSelected([]); }}>
               Next Follow-ups {nextFollowupLeads.length > 0 && <span className="subtab-badge">{nextFollowupLeads.length}</span>}
             </button>
+              <button className={`subtab-btn ${activeTab==="lost"?"active":""}`} onClick={() => { setActiveTab("lost"); setSelected([]); }}>
+              Lost Leads {lostLeadsList.length > 0 && <span className="subtab-badge">{lostLeadsList.length}</span>}
+            </button>
           </div>
 
            <div className="tbl-filters">
@@ -1738,7 +1901,9 @@ const Dashboard = () => {
                 )}
                 {!loading && activeList.length===0 && (
                   <tr><td colSpan={9} className="tbl-empty">
-                    {activeTab === "pipeline" ? "No leads found — click any calendar date to view follow-ups." : "No leads with multiple follow-ups yet."}
+                    {activeTab === "pipeline" ? "No leads found — click any calendar date to view follow-ups."
+                      : activeTab === "nextFollowups" ? "No leads with multiple follow-ups yet."
+                      : "No lost leads yet."}
                   </td></tr>
                 )}
                 {!loading && activeList.map((lead) => {
@@ -1759,13 +1924,22 @@ const Dashboard = () => {
                       </td>
                       {activeTab==="nextFollowups" && <td>{lead.followupCount || 0}</td>}
                       <td>
-                        <ActionRow
-                          lead={lead} busyId={busyId}
-                          onView={setViewLead} onEdit={setEditLead}
-                          onDone={setDoneLead} onNextFollowup={setNextLead}
-                          onHistory={openHistory} onDoc={openDoc}
-                          onConvert={setConvertLead} onDelete={delOne}
-                        />
+                        {activeTab === "lost" ? (
+                          <div className="act-row">
+                            <button className="act-btn act-v" title="View" onClick={() => setViewLead(lead)} disabled={busyId === lead.leadPrimeId}><Eye size={15} /></button>
+                            <button className="act-btn act-d" title="View reason" onClick={() => setViewLostReason(lead)} disabled={busyId === lead.leadPrimeId}><FileText size={15} /></button>
+                            <button className="act-btn act-done" title="Revert to pipeline" onClick={() => handleRevertLost(lead)} disabled={busyId === lead.leadPrimeId}><History size={15} /></button>
+                            {busyId === lead.leadPrimeId && <Loader2 size={14} className="spin" />}
+                          </div>
+                        ) : (
+                          <ActionRow
+                            lead={lead} busyId={busyId}
+                            onView={setViewLead} onEdit={setEditLead}
+                            onDone={setDoneLead} onNextFollowup={setNextLead}
+                            onHistory={openHistory} onDoc={openDoc}
+                            onConvert={setConvertLead} onDelete={delOne} onLost={setLostLead}
+                          />
+                        )}
                       </td>
                     </tr>
                   );
@@ -1804,6 +1978,8 @@ const Dashboard = () => {
       {nextLead    && <NextFollowupOverlay lead={nextLead} saving={busyId === nextLead.leadPrimeId} onClose={() => setNextLead(null)} onSubmit={handleNextFollowupSubmit} />}
       {histLead    && <HistoryOverlay lead={histLead} history={histData} loading={histLoading} onClose={() => { setHistLead(null); setHistData([]); }} />}
       {convertLead && <ConvertOverlay lead={convertLead} saving={busyId === convertLead.leadPrimeId} onClose={() => setConvertLead(null)} onConfirm={handleConvertConfirm} />}
+      {lostLead    && <LostOverlay lead={lostLead} saving={busyId === lostLead.leadPrimeId} onClose={() => setLostLead(null)} onSubmit={handleLostSubmit} />}
+            {viewLostReason && <LostReasonOverlay lead={viewLostReason} saving={busyId === viewLostReason.leadPrimeId} onClose={() => setViewLostReason(null)} onRevert={(l) => { setViewLostReason(null); handleRevertLost(l); }} />}
       {deleteTarget && (
         <DeleteConfirmOverlay
           label={deleteTarget.type === "one" ? "Delete this lead?" : `Delete ${selected.length} leads?`}

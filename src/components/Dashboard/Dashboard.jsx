@@ -1743,7 +1743,7 @@ const activeList = activeTab === "pipeline" ? pipelineLeads : activeTab === "nex
 
   return (
     <div className="root-dashboard">
-      <ToastContainer position="top-right" autoClose={2500} theme="light" />
+      {/* <ToastContainer position="top-right" autoClose={2500} theme="light" /> */}
       <nav className="dash-nav">
         <div className="nav-brand">
           <span className="font-mono text-sm font-thin text-gray-600">Hey! Let's make it happen :)</span>

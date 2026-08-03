@@ -733,3 +733,92 @@
   .navbar-search-wrap { display: none; }
   .navbar { padding: 0 14px; }
 }
+
+/* ── Logout Confirmation Overlay ── */
+.logout-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 13, 3, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: logoutFadeIn 0.15s ease-out;
+}
+
+.logout-overlay-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 28px 26px 22px;
+  width: 100%;
+  max-width: 340px;
+  box-shadow: 0 20px 48px rgba(28, 13, 3, 0.18);
+  animation: logoutSlideUp 0.18s ease-out;
+}
+
+.logout-overlay-card h3 {
+  font-family: var(--ff-display, 'Space Grotesk', sans-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--tx-hi, #1c0d03);
+  margin: 0 0 8px;
+}
+
+.logout-overlay-card p {
+  font-size: 13.5px;
+  color: var(--tx-mute, #b07850);
+  margin: 0 0 22px;
+  line-height: 1.5;
+}
+
+.logout-overlay-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.logout-cancel-btn,
+.logout-confirm-btn {
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.logout-cancel-btn {
+  background: #f5efe9;
+  color: var(--tx-hi, #1c0d03);
+}
+
+.logout-cancel-btn:hover:not(:disabled) {
+  background: #ebe2d8;
+}
+
+.logout-confirm-btn {
+  background: #d9432e;
+  color: #fff;
+}
+
+.logout-confirm-btn:hover:not(:disabled) {
+  background: #c23a26;
+}
+
+.logout-cancel-btn:disabled,
+.logout-confirm-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@keyframes logoutFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes logoutSlideUp {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}

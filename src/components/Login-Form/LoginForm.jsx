@@ -3,13 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import "../Login-Form/LoginForm.css";
 import { Eye, EyeOff, Smartphone, Lock, ArrowRight, ShieldCheck, Zap, TrendingUp } from "lucide-react";
-
-// TODO: dummy credentials for now — replace with a real auth API call
-const DUMMY_MOBILE = "8317289305";
-const DUMMY_PASSWORD = "123456";
+import { loginApi } from "../../api/authApi";
+import { useAuth } from "../../context/AuthContext";
 
 const LoginForm = () => {
   const navigate = useNavigate();
+  const { markLoggedIn } = useAuth();
   const [mobile, setMobile] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -28,23 +27,23 @@ const LoginForm = () => {
     return e;
   };
 
-  const handleSubmit = (ev) => {
+  const handleSubmit = async (ev) => {
     ev.preventDefault();
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
 
     setLoading(true);
-    // TODO: replace this dummy check with a real auth API call
-    setTimeout(() => {
-      if (mobile === DUMMY_MOBILE && password === DUMMY_PASSWORD) {
-        sessionStorage.setItem("kunash_auth", "true");
-        toast.success("Login Successfully!");
-        navigate("/dashboard", { replace: true });
-      } else {
-        toast.error("Invalid mobile number or password");
-        setLoading(false);
-      }
-    }, 800);
+    try {
+      await loginApi(mobile, password); // admin_token + refresh_token set as httpOnly cookies by backend
+      markLoggedIn();
+      toast.success("Login Successfully!");
+      navigate("/dashboard", { replace: true });
+    } catch (err) {
+      const msg = err.response?.data?.message || "Invalid mobile number or password";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -148,8 +147,6 @@ const LoginForm = () => {
               </div>
               {errs.password && <span className="lf-err-msg">{errs.password}</span>}
             </div>
-
-           
 
             <button type="submit" className="lf-submit" disabled={loading}>
               {loading ? <span className="lf-spinner" /> : (

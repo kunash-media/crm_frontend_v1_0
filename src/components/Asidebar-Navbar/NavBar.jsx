@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { logoutApi } from "../../api/authApi";
 import "./layout.css";
+
 
 /* ── Route → display name map ── add future routes here ── */
 const ROUTE_META = {
@@ -54,9 +58,9 @@ const NotificationPanel = ({ onClose }) => {
   );
 };
 
-const ProfilePanel = ({ onClose }) => {
+// replace the entire ProfilePanel component with:
+const ProfilePanel = ({ onClose, admin, onLogoutClick }) => {
   const ref = useRef(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     const handler = (e) => {
@@ -66,20 +70,21 @@ const ProfilePanel = ({ onClose }) => {
     return () => document.removeEventListener("mousedown", handler);
   }, [onClose]);
 
+  const initial = admin?.mobile ? admin.mobile.slice(-1) : "A";
+
   return (
     <div className="profile-panel" ref={ref}>
       <div className="profile-info">
-        <div className="profile-avatar-lg">A</div>
+        <div className="profile-avatar-lg">{initial}</div>
         <div>
-          <p className="profile-name">Admin User</p>
-          <p className="profile-email">admin@leadflow.io</p>
+          <p className="profile-name">{admin?.mobile || "Admin"}</p>
+          <p className="profile-email">{admin?.role || ""}</p>
         </div>
       </div>
       <div className="profile-divider" />
       <ul className="profile-menu">
         {[
-          { icon: "👤", label: "My Profile"   },
-         
+          { icon: "👤", label: "My Profile" },
         ].map((item) => (
           <li key={item.label}>
             <button className="profile-menu-item" onClick={item.action || onClose}>
@@ -90,7 +95,7 @@ const ProfilePanel = ({ onClose }) => {
         ))}
       </ul>
       <div className="profile-divider" />
-      <button className="profile-logout">
+      <button className="profile-logout" onClick={onLogoutClick}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
           <polyline points="16 17 21 12 16 7"/>
@@ -102,12 +107,47 @@ const ProfilePanel = ({ onClose }) => {
   );
 };
 
+// add this new component, right after ProfilePanel, before NavBar:
+const LogoutConfirmOverlay = ({ onConfirm, onCancel, loading }) => (
+  <div className="logout-overlay">
+    <div className="logout-overlay-card">
+      <h3>Sign out?</h3>
+      <p>You'll need to log in again to access the admin panel.</p>
+      <div className="logout-overlay-actions">
+        <button className="logout-cancel-btn" onClick={onCancel} disabled={loading}>
+          Cancel
+        </button>
+        <button className="logout-confirm-btn" onClick={onConfirm} disabled={loading}>
+          {loading ? "Signing out…" : "Sign Out"}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const NavBar = () => {
   const location = useLocation();
   const navigate  = useNavigate();
-  const [search,       setSearch]      = useState("");
-  const [showNotif,    setShowNotif]   = useState(false);
-  const [showProfile,  setShowProfile] = useState(false);
+  const { admin, markLoggedOut } = useAuth();
+  const [search,        setSearch]        = useState("");
+  const [showNotif,     setShowNotif]     = useState(false);
+  const [showProfile,   setShowProfile]   = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut,    setLoggingOut]    = useState(false);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logoutApi(); // clears admin_token + refresh_token httpOnly cookies server-side
+    } catch (err) {
+      // even if the API call fails, clear local state so the user isn't stuck logged in visually
+    } finally {
+      markLoggedOut();
+      setLoggingOut(false);
+      setShowLogoutConfirm(false);
+      navigate("/login", { replace: true }); // works from any page — NavBar is centralized
+    }
+  };
 
   const meta     = ROUTE_META[location.pathname] || { label: "Page", parent: null };
   const unreadCount = 2;
@@ -196,7 +236,7 @@ const NavBar = () => {
             <div className="navbar-avatar">A</div>
             <div className="navbar-profile-info">
               <span className="navbar-profile-name">Admin</span>
-              <span className="navbar-profile-role">Administrator</span>
+               <p className="profile-email">{admin?.role || ""}</p>
             </div>
             <span className="navbar-chevron" style={{ transform: showProfile ? "rotate(180deg)" : "rotate(0deg)" }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -204,10 +244,25 @@ const NavBar = () => {
               </svg>
             </span>
           </button>
-          {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} />}
+          {showProfile && (
+            <ProfilePanel
+              admin={admin}
+              onClose={() => setShowProfile(false)}
+              onLogoutClick={() => { setShowProfile(false); setShowLogoutConfirm(true); }}
+            />
+          )}
         </div>
 
       </div>
+
+      {showLogoutConfirm && createPortal(
+        <LogoutConfirmOverlay
+          onConfirm={handleLogout}
+          onCancel={() => setShowLogoutConfirm(false)}
+          loading={loggingOut}
+        />,
+        document.body
+      )}
     </header>
   );
 };

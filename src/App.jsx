@@ -2,6 +2,8 @@ import "./components/Asidebar-Navbar/layout.css";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { Routes, Route, Navigate } from "react-router-dom";
+import ProtectedRoute from "./routes/ProtectedRoute";
+import { useAuth } from "./context/AuthContext";
 import AsideBar from "./components/Asidebar-Navbar/AsideBar.jsx";
 import NavBar   from "./components/Asidebar-Navbar/NavBar.jsx";
 import Dashboard from "./components/Dashboard/Dashboard.jsx";
@@ -16,12 +18,6 @@ import LoginForm from "./components/Login-Form/LoginForm.jsx";
    Swap isAuthed() with a real token/session check once the
    backend auth API is wired.
 ───────────────────────────────────────────────────────────── */
-const isAuthed = () => sessionStorage.getItem("kunash_auth") === "true";
-
-const ProtectedRoute = ({ children }) => {
-  if (!isAuthed()) return <Navigate to="/login" replace />;
-  return children;
-};
 
 /* ─────────────────────────────────────────────────────────────
    PLACEHOLDER — swap each one for the real component once built
@@ -63,12 +59,13 @@ const AppLayout = ({ children }) => (
 );
 
 function App() {
+  const { isAuthenticated } = useAuth();
   return (
   <>
     <ToastContainer position="top-right" autoClose={3000} />
     <Routes>
-      <Route path="/" element={<Navigate to={isAuthed() ? "/dashboard" : "/login"} replace />} />
-
+      {/* <Route path="/" element={<Navigate to={isAuthed() ? "/dashboard" : "/login"} replace />} /> */}
+      <Route path="/" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
       <Route path="/login" element={<LoginForm />} />
 
       <Route path="/dashboard" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />

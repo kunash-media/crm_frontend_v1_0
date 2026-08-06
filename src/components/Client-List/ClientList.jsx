@@ -9,6 +9,7 @@ const EMPTY_CLIENT = {
   firstName: "", lastName: "", contact: "", email: "",
   service: "", project: "", source: "", type: "", assignTo: "",
   totalAmount: "", advanceAmount: "", remainAmount: "", pendingAmount: "",
+  remainPayFollowUpDate: "",
 };
 
 const currency = (n) =>
@@ -88,12 +89,13 @@ const ViewClientForm = ({ client, onClose }) => (
           </div>
         </SectionRow>
 
-        <SectionRow title="Payment information" last>
+       <SectionRow title="Payment information" last>
           <div className="cl-form-grid">
             <div className="cl-form-field"><label>Total Amount</label><div className="cl-form-value">{currency(client.totalAmount)}</div></div>
             <div className="cl-form-field"><label>Advance</label><div className="cl-form-value cl-form-value-success">{currency(client.advanceAmount)}</div></div>
             <div className="cl-form-field"><label>Remains</label><div className="cl-form-value cl-form-value-pending">{currency(client.remainAmount)}</div></div>
             <div className="cl-form-field"><label>Pending Payment</label><div className="cl-form-value cl-form-value-pending">{currency(client.pendingAmount)}</div></div>
+            <div className="cl-form-field"><label>Remaining Payment Follow-up Date</label><div className="cl-form-value">{client.remainPayFollowUpDate || "—"}</div></div>
           </div>
         </SectionRow>
       </div>
@@ -156,10 +158,11 @@ const ClientFormFields = ({ form, update, errs }) => (
 
     <SectionRow title="Payment information" last>
       <div className="cl-form-grid">
-        <div className="cl-form-field"><label>Total Amount</label><input type="number" value={form.totalAmount} onChange={update("totalAmount")} /></div>
-        <div className="cl-form-field"><label>Advance Amount</label><input type="number" value={form.advanceAmount} onChange={update("advanceAmount")} /></div>
-        <div className="cl-form-field"><label>Remain Amount</label><input type="number" value={form.remainAmount} onChange={update("remainAmount")} /></div>
-        <div className="cl-form-field"><label>Pending Amount</label><input type="number" value={form.pendingAmount} onChange={update("pendingAmount")} /></div>
+        <div className="cl-form-field"><label>Total Amount</label><input type="number" min="0" value={form.totalAmount} onChange={update("totalAmount")} /></div>
+        <div className="cl-form-field"><label>Advance Amount</label><input type="number" min="0" value={form.advanceAmount} onChange={update("advanceAmount")} /></div>
+        <div className="cl-form-field"><label>Remain Amount</label><input type="number" min="0" value={form.remainAmount} onChange={update("remainAmount")} /></div>
+        <div className="cl-form-field"><label>Pending Amount</label><input type="number" min="0" value={form.pendingAmount} onChange={update("pendingAmount")} /></div>
+        <div className="cl-form-field"><label>Remaining Payment Follow-up Date</label><input type="date" value={form.remainPayFollowUpDate || ""} onChange={update("remainPayFollowUpDate")} /></div>
       </div>
     </SectionRow>
   </>
@@ -367,7 +370,7 @@ const ClientList = () => {
 
   const toNum = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
 
-  const buildPayload = (form) => ({
+const buildPayload = (form) => ({
     firstName: form.firstName,
     lastName: form.lastName,
     contact: form.contact,
@@ -381,6 +384,7 @@ const ClientList = () => {
     advanceAmount: toNum(form.advanceAmount),
     remainAmount: toNum(form.remainAmount),
     pendingAmount: toNum(form.pendingAmount),
+    remainPayFollowUpDate: form.remainPayFollowUpDate || null,
   });
 
   const handleAddClient = async (form) => {
@@ -486,16 +490,15 @@ const ClientList = () => {
               <tr className="tr-table">
                 <th>First name</th><th>Last name</th><th>Contact</th><th>Email</th>
                 <th>Service</th><th>Project</th><th>Total Amount</th><th>Advance</th>
-                <th>Remain</th><th>Source</th><th>Assigned To</th><th className="cl-col-sticky">Action</th>
+                <th>Remain</th><th>Remain Follow-up</th><th>Source</th><th>Assigned To</th><th className="cl-col-sticky">Action</th>              
               </tr>
             </thead>
             <tbody>
               {loading && (
-                <tr><td colSpan={12} style={{ textAlign: "center", padding: "20px" }}>Loading clients…</td></tr>
+                <tr><td colSpan={13} style={{ textAlign: "center", padding: "20px" }}>Loading clients…</td></tr>
               )}
               {!loading && clients.length === 0 && (
-                <tr><td colSpan={12} style={{ textAlign: "center", padding: "20px" }}>No clients yet — add one or convert a lead.</td></tr>
-              )}
+                <tr><td colSpan={13} style={{ textAlign: "center", padding: "20px" }}>No clients yet — add one or convert a lead.</td></tr>              )}
               {!loading && clients.map((c) => (
                 <tr key={c.clientPrimeId}>
                   <td>{c.firstName}</td>
@@ -507,7 +510,8 @@ const ClientList = () => {
                   <td>{currency(c.totalAmount)}</td>
                   <td className="cl-cell-success">{currency(c.advanceAmount)}</td>
                   <td className={c.remainAmount > 0 ? "cl-cell-pending" : "cl-cell-muted"}>{currency(c.remainAmount)}</td>
-                  <td>{c.source}</td>
+                  <td className={c.remainPayFollowUpDate ? "" : "cl-cell-muted"}>{c.remainPayFollowUpDate || "—"}</td>
+                  <td>{c.source}</td>    
                   <td className={c.assignTo ? "" : "cl-cell-muted"}>{c.assignTo || "Unassigned"}</td>
                   <td className="cl-col-sticky">
                     <div className="cl-action-btns">

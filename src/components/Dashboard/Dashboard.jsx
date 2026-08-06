@@ -842,16 +842,17 @@ if (phoneCheck.checked && phoneCheck.exists) {
 };
 
 /* ── OVERLAY: Convert ── */
-/* ── OVERLAY: Convert ── */
 const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => {
   const [totalAmount, setTotalAmount] = useState("");
   const [advanceAmount, setAdvanceAmount] = useState("");
+  const [remainPayFollowUpDate, setRemainPayFollowUpDate] = useState("");
   const [errs, setErrs] = useState({});
 
   const handleTotalChange = (v) => {
-    setTotalAmount(v);
+    const clean = v.replace(/^-+/, "");
+    setTotalAmount(clean);
     // auto-suggest 60% advance; user can still overwrite it manually after
-    const n = parseFloat(v);
+    const n = parseFloat(clean);
     if (!Number.isNaN(n) && n > 0) {
       setAdvanceAmount(String(Math.round(n * 0.6)));
     }
@@ -865,14 +866,24 @@ const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => {
     if (!totalAmount || Number.isNaN(total) || total <= 0) e.totalAmount = "Enter a valid total amount";
     if (!advanceAmount || Number.isNaN(advance) || advance < 0) e.advanceAmount = "Enter a valid advance amount";
     if (!e.advanceAmount && !e.totalAmount && advance > total) e.advanceAmount = "Advance can't exceed total";
+    
+    const remaining = total - advance;
+    if (!e.totalAmount && !e.advanceAmount && remaining > 0 && !remainPayFollowUpDate) {
+      e.remainPayFollowUpDate = "Pick a follow-up date for the remaining payment";
+    }
+    
     return e;
   };
 
   const submit = () => {
     const e = validate();
     if (Object.keys(e).length) { setErrs(e); return; }
-    onConfirm(lead, { totalAmount: parseFloat(totalAmount), advanceAmount: parseFloat(advanceAmount) });
-  };
+     onConfirm(lead, {
+       totalAmount: parseFloat(totalAmount),
+       advanceAmount: parseFloat(advanceAmount),
+       remainPayFollowUpDate: remainPayFollowUpDate || null,
+     });  
+    };
 
   return (
     <OverlayShell onClose={onClose}>
@@ -890,6 +901,7 @@ const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => {
             <label>Total Amount *</label>
             <input
               type="number"
+              min="0"
               placeholder="e.g. 85000"
               value={totalAmount}
               className={errs.totalAmount ? "fe" : ""}
@@ -902,14 +914,27 @@ const ConvertOverlay = ({ lead, onClose, onConfirm, saving }) => {
             <label>Advance Amount (60%)</label>
             <input
               type="number"
+              min="0"
               placeholder="e.g. 51000"
               value={advanceAmount}
               className={errs.advanceAmount ? "fe" : ""}
               disabled={saving}
-              onChange={(e) => { setAdvanceAmount(e.target.value); setErrs((er) => ({ ...er, advanceAmount: undefined })); }}
+              onChange={(e) => { setAdvanceAmount(e.target.value.replace(/^-+/, "")); setErrs((er) => ({ ...er, advanceAmount: undefined })); }}            
             />
             {errs.advanceAmount && <span className="fe-msg">{errs.advanceAmount}</span>}
           </div>
+
+           <div className="fg">
+            <label>Remaining Payment</label>
+             <input
+               type="date"
+               value={remainPayFollowUpDate}
+               className={errs.remainPayFollowUpDate ? "fe" : ""}
+               disabled={saving}
+               onChange={(e) => { setRemainPayFollowUpDate(e.target.value); setErrs((er) => ({ ...er, remainPayFollowUpDate: undefined })); }}
+             />
+             {errs.remainPayFollowUpDate && <span className="fe-msg">{errs.remainPayFollowUpDate}</span>}
+           </div>
         </div>
       </div>
       <div className="mo-foot">
@@ -980,102 +1005,6 @@ const BulkEmailOverlay = ({ count, onClose, onSend }) => (
 );
 
 /* ── OVERLAY: Bulk WhatsApp forward — pick a template first, then send ── */
-// const BulkWhatsAppOverlay = ({ leads, onClose }) => {
-//   const [template, setTemplate] = useState(null); // null = still choosing
-//   const [sentIds, setSentIds] = useState([]);
-
-//   const sendOne = (lead) => {
-//     const phoneDigits = (lead.phone || "").replace(/\D/g, "");
-//     if (phoneDigits.length < 10) {
-//       toast.error(`${lead.firstName} has no valid phone number`);
-//       return;
-//     }
-//     const waPhone = phoneDigits.length === 10 ? `91${phoneDigits}` : phoneDigits;
-//     const msg = WA_TEMPLATES[template].build(lead);
-//     window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank", "noopener,noreferrer");
-//     setSentIds((p) => [...p, lead.leadPrimeId]);
-//   };
-
-//   const sendAll = () => {
-//     leads.forEach((lead, idx) => {
-//       setTimeout(() => sendOne(lead), idx * 400); // stagger to reduce popup-blocking
-//     });
-//   };
-
-//   // Step 1 — template selection (must pick before any send is possible)
-//   if (!template) {
-//     return (
-//       <OverlayShell onClose={onClose}>
-//         <div className="mo-head">
-//           <div><p className="mo-sub">SELECT TEMPLATE</p><h2 className="mo-title">{leads.length} lead{leads.length!==1?"s":""} selected</h2></div>
-//           <button className="mo-x" onClick={onClose}><X size={16} /></button>
-//         </div>
-//         <div className="mo-body">
-//           <p className="email-hint">Choose a WhatsApp message template to send to all selected leads:</p>
-//           <div className="email-tpl-row">
-//             <button className="email-tpl-btn" onClick={() => setTemplate("followup")}>
-//               <MessageSquareText size={20} /><span>Follow-up</span>
-//             </button>
-//             <button className="email-tpl-btn" onClick={() => setTemplate("meeting_reminder")}>
-//               <CalendarCheck2 size={20} /><span>Meeting Reminder</span>
-//             </button>
-//             <button className="email-tpl-btn" onClick={() => setTemplate("payment_reminder")}>
-//               <BellRing size={20} /><span>Payment Reminder</span>
-//             </button>
-//           </div>
-//         </div>
-//         <div className="mo-foot"><button className="btn-cancel" onClick={onClose}>Cancel</button></div>
-//       </OverlayShell>
-//     );
-//   }
-
-//   // Step 2 — preview + per-lead / bulk send, now that a template is locked in
-//   return (
-//     <OverlayShell onClose={onClose} className="mo-wide">
-//       <div className="mo-head">
-//         <div>
-//           <p className="mo-sub">FORWARD WHATSAPP — {WA_TEMPLATES[template].label.toUpperCase()}</p>
-//           <h2 className="mo-title">{leads.length} lead{leads.length!==1?"s":""} selected</h2>
-//         </div>
-//         <button className="mo-x" onClick={onClose}><X size={16} /></button>
-//       </div>
-//       <div className="mo-body">
-//         <p className="email-hint">
-//           Opens WhatsApp Web/App with a pre-filled "{WA_TEMPLATES[template].label}" message for each contact. Each tab needs to be sent manually inside WhatsApp.
-//         </p>
-//         <button className="wa-change-tpl" onClick={() => { setTemplate(null); setSentIds([]); }}>
-//           ← Change template
-//         </button>
-//         <div className="wa-lead-list">
-//           {leads.map((lead) => (
-//             <div key={lead.leadPrimeId} className="wa-lead-row">
-//               <div className="wa-lead-info">
-//                 <span className="wa-lead-name">{lead.firstName} {lead.lastName}</span>
-//                 <span className="wa-lead-phone">{lead.phone || "—"}</span>
-//                 <span className="wa-lead-req">{lead.requirementCategory || "—"}</span>
-//               </div>
-//               <button
-//                 className={`act-btn act-wa ${sentIds.includes(lead.leadPrimeId) ? "act-wa-sent" : ""}`}
-//                 onClick={() => sendOne(lead)}
-//                 title="Open in WhatsApp"
-//               >
-//                 {sentIds.includes(lead.leadPrimeId) ? <CheckCircle2 size={15} /> : <Send size={15} />}
-//               </button>
-//             </div>
-//           ))}
-//         </div>
-//       </div>
-//       <div className="mo-foot">
-//         <button className="btn-cancel" onClick={onClose}>Close</button>
-//         <button className="btn-save" onClick={sendAll}>
-//            Send All
-//         </button>
-//       </div>
-//     </OverlayShell>
-//   );
-// };
-
-
 
 const CALENDAR_API_BASE = "http://localhost:9090/api/calendar/v1";
 

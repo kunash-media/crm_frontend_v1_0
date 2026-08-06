@@ -1,4 +1,5 @@
 import "../Lead-Form/AddLead.css";
+import { UploadCloud } from "lucide-react";
 import { useState, useEffect, useRef} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -65,7 +66,15 @@ const AddLead = () => {
 
   const [attachments, setAttachments] = useState([]);
   const [phoneCheck, setPhoneCheck] = useState({ checking: false, exists: false, checkedFor: "", existingLead: null });
+  
+  const [showBulkOverlay, setShowBulkOverlay] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const [bulkResult, setBulkResult] = useState(null); // { totalRows, totalUploaded, totalSkipped, errors[] }
+  const [bulkError, setBulkError] = useState("");
 
+  
   // Auto-set follow-up date to tomorrow by default
   useEffect(() => {
     const tomorrow = new Date();
@@ -164,6 +173,125 @@ const AddLead = () => {
     setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const BULK_ACCEPTED_TYPES = ".xlsx,.xls,.csv";
+
+const handleBulkFileSelect = (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  setBulkFile(file);
+  setBulkResult(null);
+  setBulkError("");
+};
+
+const resetBulkOverlay = () => {
+  setShowBulkOverlay(false);
+  setBulkFile(null);
+  setBulkUploading(false);
+  setBulkProgress(0);
+  setBulkResult(null);
+  setBulkError("");
+};
+
+const handleBulkUpload = () => {
+  if (!bulkFile) return;
+  setBulkUploading(true);
+  setBulkProgress(0);
+  setBulkError("");
+  setBulkResult(null);
+
+  const formData = new FormData();
+  formData.append("file", bulkFile);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `${API_BASE}/bulk-upload`, true);
+
+  xhr.upload.onprogress = (evt) => {
+    if (evt.lengthComputable) {
+      setBulkProgress(Math.round((evt.loaded / evt.total) * 100));
+    }
+  };
+
+  xhr.onload = () => {
+    setBulkUploading(false);
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        setBulkResult(data);
+        setBulkProgress(100);
+        if (data.totalUploaded > 0) {
+          toast.success(`${data.totalUploaded} lead(s) uploaded successfully`);
+        }
+      } catch {
+        setBulkError("Upload finished but response could not be read.");
+      }
+    } else {
+      setBulkError("Upload failed. Please check the file and try again.");
+    }
+  };
+
+  xhr.onerror = () => {
+    setBulkUploading(false);
+    setBulkError("Upload failed. Please check your connection and try again.");
+  };
+
+  xhr.send(formData);
+};
+
+const exportBulkResultToWord = () => {
+  if (!bulkResult) return;
+  const { totalRows, totalUploaded, totalSkipped, errors = [] } = bulkResult;
+  const dateStr = new Date().toLocaleString('en-IN');
+
+  const rowsHtml = errors.length
+    ? errors.map(e => `
+        <tr>
+          <td style="border:1px solid #ddd;padding:8px;">${e.rowNumber}</td>
+          <td style="border:1px solid #ddd;padding:8px;">${e.reason}</td>
+        </tr>`).join("")
+    : `<tr><td colspan="2" style="border:1px solid #ddd;padding:8px;">No skipped entries — all rows uploaded successfully.</td></tr>`;
+
+  const html = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head><meta charset="utf-8"><title>Bulk Upload Report</title></head>
+    <body style="font-family:Calibri,Arial,sans-serif;">
+      <h2 style="color:#1f2937;">Lead Bulk Upload Report</h2>
+      <p style="color:#6b7280;font-size:12px;">Generated on ${dateStr}</p>
+      <table style="border-collapse:collapse;margin:16px 0;">
+        <tr>
+          <td style="padding:8px 16px 8px 0;"><strong>Total rows in file:</strong></td>
+          <td>${totalRows}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 16px 8px 0;color:#16a34a;"><strong>Successfully uploaded:</strong></td>
+          <td style="color:#16a34a;">${totalUploaded}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 16px 8px 0;color:#dc2626;"><strong>Skipped:</strong></td>
+          <td style="color:#dc2626;">${totalSkipped}</td>
+        </tr>
+      </table>
+      <h3 style="color:#1f2937;">Skipped Entries — Reasons</h3>
+      <table style="border-collapse:collapse;width:100%;">
+        <tr style="background:#f3f4f6;">
+          <th style="border:1px solid #ddd;padding:8px;text-align:left;">Row No.</th>
+          <th style="border:1px solid #ddd;padding:8px;text-align:left;">Reason</th>
+        </tr>
+        ${rowsHtml}
+      </table>
+    </body>
+    </html>`;
+
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Lead_Bulk_Upload_Report_${Date.now()}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const validate = () => {
     const err = {};
     if (!form.firstName.trim()) err.firstName = "First name is required";
@@ -255,6 +383,11 @@ const AddLead = () => {
         </div>
 
         <div className="header-actions">
+
+          <button className="flex justify-center btn-bulk" onClick={() => setShowBulkOverlay(true)} disabled={isSaving}>
+            <UploadCloud size={15} strokeWidth={2} style={{ marginRight: 6, verticalAlign: "middle" }} />
+            Bulk Upload
+          </button>
           <button className="btn-cancel" onClick={() => navigate("/dashboard")} disabled={isSaving}>
             Cancel
           </button>
@@ -541,6 +674,104 @@ const AddLead = () => {
           </div>
         </div>
       </div>
+
+      {showBulkOverlay && (
+    <div className="bulk-overlay-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !bulkUploading) resetBulkOverlay(); }}>
+      <div className="bulk-overlay-card">
+        <div className="bulk-overlay-header">
+          <h3>Bulk Upload Leads</h3>
+          {!bulkUploading && (
+            <button className="bulk-close-btn" onClick={resetBulkOverlay}>✕</button>
+          )}
+        </div>
+
+        {!bulkResult && (
+          <>
+            <p className="bulk-desc">
+              Upload an Excel sheet (.xlsx, .xls, .csv) with these columns — any order, any case:
+            </p>
+            <div className="bulk-fields-chips">
+              {["First Name", "Last Name", "Email", "Mobile", "Company", "Source"].map(f => (
+                <span key={f} className="bulk-field-chip">{f}</span>
+              ))}
+            </div>
+            <p className="bulk-desc-sub">
+              First Name/Last Name, and Email or Mobile are required per row. Rows missing these, or with duplicate phone/email, will be skipped automatically.
+            </p>
+
+            <div className="fg full" style={{ marginTop: 16 }}>
+              <label className="file-drop" htmlFor="bulk-lead-file">
+                <span className="file-drop-icon">📄 {bulkFile ? bulkFile.name : "Choose Excel file"}</span>
+                <span className="file-drop-hint">.xlsx, .xls, .csv</span>
+              </label>
+              <input
+                id="bulk-lead-file"
+                type="file"
+                accept={BULK_ACCEPTED_TYPES}
+                onChange={handleBulkFileSelect}
+                className="file-input-hidden"
+                disabled={bulkUploading}
+              />
+            </div>
+
+            {bulkError && <span className="error-msg">{bulkError}</span>}
+
+            {bulkUploading && (
+              <div className="bulk-progress-wrap">
+                <div className="bulk-progress-bar">
+                  <div className="bulk-progress-fill" style={{ width: `${bulkProgress}%` }} />
+                </div>
+                <span className="bulk-progress-label">{bulkProgress}% uploaded</span>
+              </div>
+            )}
+
+            <div className="bulk-overlay-actions">
+              <button className="btn-cancel" onClick={resetBulkOverlay} disabled={bulkUploading}>Cancel</button>
+              <button className="btn-save" onClick={handleBulkUpload} disabled={!bulkFile || bulkUploading}>
+                {bulkUploading ? "Uploading..." : "Upload"}
+              </button>
+            </div>
+          </>
+        )}
+
+      {bulkResult && (
+        <>
+          <div className="bulk-result-summary">
+              <div className="bulk-stat">
+                <span className="bulk-stat-value">{bulkResult.totalRows}</span>
+                <span className="bulk-stat-label">Total Rows</span>
+              </div>
+              <div className="bulk-stat bulk-stat-success">
+                <span className="bulk-stat-value">{bulkResult.totalUploaded}</span>
+                <span className="bulk-stat-label">Uploaded</span>
+              </div>
+              <div className="bulk-stat bulk-stat-skip">
+                <span className="bulk-stat-value">{bulkResult.totalSkipped}</span>
+                <span className="bulk-stat-label">Skipped</span>
+              </div>
+            </div>
+
+              {bulkResult.errors?.length > 0 && (
+                <div className="bulk-error-list">
+                  <p className="bulk-desc-sub" style={{ marginBottom: 8 }}>Why some rows were skipped:</p>
+                  {bulkResult.errors.map((e, i) => (
+                    <div className="bulk-error-row" key={i}>
+                      <span className="bulk-error-row-num">Row {e.rowNumber}</span>
+                      <span className="bulk-error-row-reason">{e.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="bulk-overlay-actions">
+                <button className="btn-cancel" onClick={exportBulkResultToWord}>⬇ Export Report (Word)</button>
+                <button className="btn-save" onClick={resetBulkOverlay}>Done</button>
+              </div>
+            </>
+          )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
